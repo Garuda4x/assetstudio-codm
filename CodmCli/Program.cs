@@ -21,6 +21,7 @@ namespace CodmCli
         private static WeaponCatalog catalog;
         private static CabIndex cabIndex;
         private static ContainerIndex containerIndex;
+        private static CharacterCatalog characters;
 
         private static int Main(string[] args)
         {
@@ -54,6 +55,9 @@ namespace CodmCli
                     case "anims": return CmdAnims(opts);
                     case "mbscan": return CmdMbScan(opts);
                     case "wwnames": return CmdWwNames(opts);
+                    case "characters": return CmdCharacters(opts);
+                    case "character": return CmdCharacter(opts);
+                    case "exportchar": return CmdExportCharacter(opts);
                     case "components": return CmdComponents(opts);
                     case "deps": return CmdDeps(opts);
                     case "classes": return CmdClasses(opts);
@@ -99,6 +103,9 @@ namespace CodmCli
             Console.WriteLine("  deps <pak...>                  load bundle(s) and show which other paks they reference");
             Console.WriteLine("  classes [--unknown]            sound class per weapon family (wpn_<class> bank)");
             Console.WriteLine("  class <weapon> [<class>|-]     show or set the sound class of a weapon family (ar smg lmg sniper shotgun pistol launcher melee)");
+            Console.WriteLine("  characters [filter]            list character skins (cod_models/avatar)");
+            Console.WriteLine("  character <name>               paks of a character skin");
+            Console.WriteLine("  exportchar <name> [--out d]    export a character: every prefab as cast (body, head, arms) + textures [--no-deps] [--all-copies]");
             Console.WriteLine("  banks [filter]                 list sound banks");
             Console.WriteLine("  bank <name|path>               show a bank: events, actions, sounds and where their wems live");
             Console.WriteLine("  wems <bank> [--out d] [--wav]  extract every wem a bank uses, one folder per event (--flat for one folder; vgmstream with --wav)");
@@ -530,6 +537,69 @@ namespace CodmCli
             {
                 am.Clear();
             }
+            return 0;
+        }
+
+        private static CharacterCatalog EnsureCharacters()
+        {
+            if (characters != null) return characters;
+            EnsureIndex();
+            characters = CharacterCatalog.Build(pakIndex);
+            return characters;
+        }
+
+        private static CharacterEntry ResolveCharacter(string query)
+        {
+            var found = EnsureCharacters().Find(query);
+            if (found.Count == 1) return found[0];
+            if (found.Count == 0) { Console.Error.WriteLine($"No character matches '{query}'."); return null; }
+            Console.Error.WriteLine($"'{query}' is ambiguous ({found.Count} matches):");
+            foreach (var c in found.Take(30)) Console.Error.WriteLine($"  {c.DisplayName}");
+            return null;
+        }
+
+        private static int CmdCharacters(Options o)
+        {
+            var cat = EnsureCharacters();
+            var filter = o.Positional.Count > 0 ? o.Positional[0] : null;
+            var rows = cat.Characters.Where(c => filter == null || c.DisplayName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            foreach (var c in rows)
+                Console.WriteLine($"{c.DisplayName,-52} paks={c.Paks.Count,-3} {Size(c.Paks.Sum(p => p.Size)),9}");
+            Console.WriteLine($"{rows.Count} character skin(s)");
+            return 0;
+        }
+
+        private static int CmdCharacter(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("character <name>"); return 2; }
+            var c = ResolveCharacter(o.Positional[0]);
+            if (c == null) return 1;
+            Console.WriteLine($"{c.Folder}  ({c.Paks.Count} pak(s))");
+            foreach (var p in c.Paks.OrderBy(p => p.Name.Decoded))
+                Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+            return 0;
+        }
+
+        private static int CmdExportCharacter(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("exportchar <name> [--out dir]"); return 2; }
+            var c = ResolveCharacter(o.Positional[0]);
+            if (c == null) return 1;
+            var outRoot = o.Get("out") ?? Path.Combine(cfg.ExportRootPath, "characters");
+            var options = new WeaponExportOptions
+            {
+                Models = !o.Has("no-models"),
+                Textures = !o.Has("no-textures"),
+                Sounds = false,
+                ResolveDependencies = !o.Has("no-deps"),
+                MaxDependencyPaks = o.GetInt("max-deps", 60),
+                AllPrefabCopies = o.Has("all-copies"),
+            };
+            var svc = new CodmExportService(cfg, pakIndex, null, () => EnsureCabIndex());
+            var report = svc.ExportCharacter(c, outRoot, options, Console.WriteLine);
+            Console.WriteLine($"models={report.Models.Count} (+{report.SkippedPrefabCopies.Count} duplicate copies skipped) textures={report.Textures.Count} deps={report.DependencyPaks.Count} warnings={report.Warnings.Count}");
+            foreach (var warn in report.Warnings) Console.WriteLine("  ! " + warn);
+            Console.WriteLine(report.OutputDir);
             return 0;
         }
 

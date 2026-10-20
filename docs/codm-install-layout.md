@@ -69,6 +69,15 @@ Pak name grammar (raw): `[module!ver!ver!]path[#category][@shard].pak`
 | `scenes/map/...`, `_s_br/...`, `_s_cly/...` | ~12 000 | maps and streamed map chunks |
 | `textures/ui_icon`, `cod_prefabs/ngui` | | UI |
 
+### Characters
+
+`cod_models/avatar/<skin>` holds one folder per character skin (`c_f_alias`, `c_m_price_dead_of_night`,
+`seal6_005`); `avatar/pvebot/*` and `avatar/vfw/*` hold bot and event variants. Download copies sit in
+the `normal_role_cn*` modules. A skin bundle carries separate prefabs for the body (`_BR_3P`), the UI
+pose and the first-person arms (`_1P`); the arms' meshes and animations come from shared bundles through
+the usual dependency loading. `cod_models/cly` and `cod_models/br` are pickups, bags and boxes, not
+characters.
+
 ### Attachments
 
 `cod_models/weapons/component/<type>/<bucket>` paks (`mag/13.0`, `bar/5.0`, `sto/5.0`...) each hold

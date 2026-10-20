@@ -22,6 +22,9 @@ walking up from the exe directory, so the copy at the repository root is used). 
 | `codm mbscan <weapon\|pak> [--deps]` | scan MonoBehaviour blobs for object references and Wwise ids (research aid) |
 | `codm classes [--unknown]` | sound class of every weapon family (map, seed, kind or unknown) |
 | `codm class <weapon> [<class>\|-]` | show or set the family's sound class in `weapon-classes.json` |
+| `codm characters [filter]` | character skins under `cod_models/avatar` (pvebot and vfw sub folders grouped) |
+| `codm character <name>` | the paks of one character skin |
+| `codm exportchar <name> [--out dir] [--no-deps] [--all-copies]` | export a character: one Cast per prefab (body, head, hair, first-person arms) plus textures; no sounds |
 | `codm banks [filter]` | distinct bank names with copy count, embedded media count, size, languages |
 | `codm bank <name\|path>` | one bank: objects, events with their actions, sounds with codec and where the wem lives |
 | `codm wems <bank> [--out dir] [--wav]` | extract every wem the bank references (resolved across banks), convert with vgmstream when `--wav` |

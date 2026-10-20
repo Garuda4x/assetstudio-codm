@@ -249,7 +249,7 @@ namespace AssetStudioGUI
             }
         }
 
-        private async void BuildAssetStructures()
+        private async Task BuildAssetStructures()
         {
             if (assetsManager.assetsFileList.Count == 0)
             {

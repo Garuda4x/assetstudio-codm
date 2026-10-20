@@ -32,8 +32,9 @@ namespace AssetStudioGUI
         private ListView assetList;
         private CheckBox optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents, optDeps;
         private ComboBox classCombo;
-        private Button btnLoad, btnAdd, btnExport, btnOpenFolder, btnCopy;
+        private Button btnLoad, btnAdd, btnPreview, btnExport, btnOpenFolder, btnCopy;
         private WeaponEntry current;
+        private CharacterEntry currentCharacter;
 
         // paks tab
         private TextBox pakSearch;
@@ -143,7 +144,11 @@ namespace AssetStudioGUI
             weaponFilter.TextChanged += (s, e) => PopulateWeaponTree();
             var filterLabel = new Label { Dock = DockStyle.Top, Text = "Filter by id, name or folder. Bold = base weapon (mesh), children = skins.", AutoSize = false, Height = 18 };
             weaponTree = new TreeView { Dock = DockStyle.Fill, HideSelection = false, ShowNodeToolTips = true };
-            weaponTree.AfterSelect += (s, e) => ShowWeapon(e.Node.Tag as WeaponEntry);
+            weaponTree.AfterSelect += (s, e) =>
+            {
+                if (e.Node.Tag is CharacterEntry c) ShowCharacter(c);
+                else ShowWeapon(e.Node.Tag as WeaponEntry);
+            };
             split.Panel1.Controls.Add(weaponTree);
             split.Panel1.Controls.Add(weaponFilter);
             split.Panel1.Controls.Add(filterLabel);
@@ -194,10 +199,11 @@ namespace AssetStudioGUI
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(4) };
             btnLoad = MakeButton("Load checked (replace)", async (s, e) => await LoadIntoMain(CheckedPaks(), false));
             btnAdd = MakeButton("Add checked", async (s, e) => await LoadIntoMain(CheckedPaks(), true));
+            btnPreview = MakeButton("Preview mesh", async (s, e) => await PreviewChecked());
             btnExport = MakeButton("Export weapon...", async (s, e) => await ExportCurrent());
             btnOpenFolder = MakeButton("Show pak in Explorer", (s, e) => ShowInExplorer());
             btnCopy = MakeButton("Copy names", (s, e) => CopyNames());
-            buttons.Controls.AddRange(new Control[] { btnLoad, btnAdd, btnExport, btnOpenFolder, btnCopy });
+            buttons.Controls.AddRange(new Control[] { btnLoad, btnAdd, btnPreview, btnExport, btnOpenFolder, btnCopy });
 
             split.Panel2.Controls.Add(assetList);
             split.Panel2.Controls.Add(classRow);
@@ -362,9 +368,76 @@ namespace AssetStudioGUI
                 if (kindNode.Nodes.Count > 0)
                     weaponTree.Nodes.Add(kindNode);
             }
+            var chars = CodmSession.Characters;
+            if (chars != null)
+            {
+                var root = new TreeNode("Characters");
+                var groups = new Dictionary<string, TreeNode>(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in chars.Characters.Where(c => filter.Length == 0 || c.DisplayName.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    var node = new TreeNode(c.Name) { Tag = c, ToolTipText = $"{c.Paks.Count} pak(s)" };
+                    if (c.Group != null)
+                    {
+                        if (!groups.TryGetValue(c.Group, out var g))
+                        {
+                            g = new TreeNode(c.Group);
+                            groups[c.Group] = g;
+                            root.Nodes.Add(g);
+                        }
+                        g.Nodes.Add(node);
+                    }
+                    else
+                        root.Nodes.Add(node);
+                }
+                root.Text += $" ({root.GetNodeCount(true) - groups.Count})";
+                if (root.Nodes.Count > 0)
+                {
+                    weaponTree.Nodes.Add(root);
+                    if (filter.Length > 0) root.Expand();
+                }
+            }
             if (weaponTree.Nodes.Count > 0 && filter.Length == 0)
                 weaponTree.Nodes[0].Expand();
             weaponTree.EndUpdate();
+        }
+
+        private void ShowCharacter(CharacterEntry c)
+        {
+            current = null;
+            currentCharacter = c;
+            assetList.BeginUpdate();
+            assetList.Items.Clear();
+            assetList.Groups.Clear();
+            weaponInfo.Text = $"{c.Folder}   (character skin{(c.Group != null ? ", " + c.Group : "")})\r\n{c.Paks.Count} pak(s). Export writes every prefab (body, head, hair, first-person arms) as Cast plus textures; no sounds.";
+            classCombo.SelectedIndex = 0;
+            AddGroup("Character paks", PakIndex.OrderForLoading(c.Paks, CodmSession.Config), true);
+            assetList.EndUpdate();
+        }
+
+        private async Task PreviewChecked()
+        {
+            var paths = CheckedPaks();
+            if (paths.Length == 0)
+            {
+                SetStatus("Nothing checked.");
+                return;
+            }
+            SetBusy(true);
+            try
+            {
+                Log($"Loading {paths.Length} pak(s) for preview");
+                await owner.LoadPaksFromBrowser(paths, false, optDeps.Checked, Log);
+                if (!owner.PreviewBestMesh())
+                    Log("No mesh found in the checked paks.");
+            }
+            catch (Exception ex)
+            {
+                Log("Preview failed: " + ex.Message);
+            }
+            finally
+            {
+                SetBusy(false);
+            }
         }
 
         private static bool Matches(WeaponEntry w, string filter)
@@ -396,6 +469,7 @@ namespace AssetStudioGUI
         private void ShowWeapon(WeaponEntry w)
         {
             current = w;
+            currentCharacter = null;
             assetList.BeginUpdate();
             assetList.Items.Clear();
             assetList.Groups.Clear();
@@ -531,9 +605,9 @@ namespace AssetStudioGUI
 
         private async Task ExportCurrent()
         {
-            if (current == null)
+            if (current == null && currentCharacter == null)
             {
-                SetStatus("Select a weapon first.");
+                SetStatus("Select a weapon or character first.");
                 return;
             }
             var cfg = CodmSession.Config;
@@ -557,12 +631,16 @@ namespace AssetStudioGUI
             }
 
             var weapon = current;
+            var character = currentCharacter;
+            var label = weapon?.Folder ?? character.Folder;
             SetBusy(true);
             try
             {
-                SetStatus($"Exporting {weapon.Folder}...");
-                var report = await Task.Run(() => CodmSession.CreateExportService(Log).ExportWeapon(weapon, outRoot, options, Log));
-                SetStatus($"Exported {weapon.Folder}: {report.Models.Count} models, {report.Textures.Count} textures, {report.DependencyPaks.Count} dependency paks, {report.WemsExtracted} wems ({report.WemsConverted} wav), {report.Warnings.Count} warnings");
+                SetStatus($"Exporting {label}...");
+                var report = await Task.Run(() => weapon != null
+                    ? CodmSession.CreateExportService(Log).ExportWeapon(weapon, outRoot, options, Log)
+                    : CodmSession.CreateExportService(Log).ExportCharacter(character, Path.Combine(outRoot, "characters"), options, Log));
+                SetStatus($"Exported {label}: {report.Models.Count} models, {report.Textures.Count} textures, {report.DependencyPaks.Count} dependency paks, {report.WemsExtracted} wems ({report.WemsConverted} wav), {report.Warnings.Count} warnings");
                 foreach (var warn in report.Warnings)
                     Log("  ! " + warn);
                 if (Properties.Settings.Default.openAfterExport)
@@ -755,7 +833,7 @@ namespace AssetStudioGUI
         {
             busy = value;
             UseWaitCursor = value;
-            foreach (var b in new[] { btnLoad, btnAdd, btnExport, btnExtractWems })
+            foreach (var b in new[] { btnLoad, btnAdd, btnPreview, btnExport, btnExtractWems })
                 if (b != null) b.Enabled = !value;
         }
 

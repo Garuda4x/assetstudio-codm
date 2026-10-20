@@ -19,6 +19,7 @@ or updated from this machine; the tooling only reads files.**
 | Bundle dependencies | shared animation packs, controllers and avatars are loaded automatically (CAB index) |
 | Sounds (Wwise) | weapon banks found by their event names (`play_wpn_locus_fire_1p`), wems exported per event, class bank from the weapon class map, wav via vgmstream |
 | Attachments | magazines, barrels, stocks, grips, sights linked through the asset paths inside the attachment bundles |
+| Characters | every skin under `cod_models/avatar` (body, head, hair, first-person arms as separate prefabs), same Cast + textures export |
 | Effects | FX bundles are linked by name; their materials' textures (resolved through the shared texture bundles) and an object list are exported |
 | Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
 
@@ -105,6 +106,8 @@ codm anims 2537                    where each Animator's clips live and whether 
 codm class 2537 sniper             set the sound class of the family
 codm bank 249                      events and sounds of a skin sound set
 codm search cod_effects/particles  find paks by decoded name
+codm characters alias              list character skins
+codm exportchar c_f_alias          export a character skin (prefabs as cast + textures)
 ```
 
 See [docs/cli.md](docs/cli.md).

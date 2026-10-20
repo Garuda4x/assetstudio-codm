@@ -80,12 +80,42 @@ namespace AssetStudio.Codm
             var report = new WeaponExportReport { Weapon = w.Folder, OutputDir = dir };
 
             var paks = SelectPaks(w, o);
+            ExportBundleSet(paks, dir, o, report, log);
+
+            if (o.Sounds && wwise != null)
+                ExportSounds(w, Path.Combine(dir, "sounds"), o, report, log);
+
+            if (o.Effects && w.Effects.Count > 0)
+                ExportEffects(w, Path.Combine(dir, "fx"), report, log);
+
+            File.WriteAllText(Path.Combine(dir, "manifest.json"), JsonConvert.SerializeObject(report, Formatting.Indented));
+            log($"[Export] {w.Folder}: done -> {dir}");
+            return report;
+        }
+
+        /// <summary>A character skin: every prefab (body, head, hair, first-person arms) as Cast plus textures. No sounds.</summary>
+        public WeaponExportReport ExportCharacter(CharacterEntry c, string outRoot, WeaponExportOptions o, Action<string> log = null)
+        {
+            log = log ?? (_ => { });
+            var dir = Path.Combine(outRoot, SafeName(c.DisplayName.Replace('/', '_')));
+            Directory.CreateDirectory(dir);
+            var report = new WeaponExportReport { Weapon = c.Folder, OutputDir = dir };
+            var paks = PakIndex.OrderForLoading(c.Paks, cfg);
+            ExportBundleSet(paks, dir, o, report, log);
+            File.WriteAllText(Path.Combine(dir, "manifest.json"), JsonConvert.SerializeObject(report, Formatting.Indented));
+            log($"[Export] {c.Folder}: done -> {dir}");
+            return report;
+        }
+
+        /// <summary>Load a set of paks (plus their dependencies) and export their models and textures.</summary>
+        private void ExportBundleSet(List<PakEntry> paks, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log)
+        {
             if (o.Models || o.Textures)
             {
                 var am = new AssetsManager();
                 try
                 {
-                    log($"[Export] {w.Folder}: loading {paks.Count} pak(s)");
+                    log($"[Export] loading {paks.Count} pak(s)");
                     am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
                     report.PaksLoaded.AddRange(paks.Select(p => p.FullPath));
 
@@ -115,16 +145,6 @@ namespace AssetStudio.Codm
                     am.Clear();
                 }
             }
-
-            if (o.Sounds && wwise != null)
-                ExportSounds(w, Path.Combine(dir, "sounds"), o, report, log);
-
-            if (o.Effects && w.Effects.Count > 0)
-                ExportEffects(w, Path.Combine(dir, "fx"), report, log);
-
-            File.WriteAllText(Path.Combine(dir, "manifest.json"), JsonConvert.SerializeObject(report, Formatting.Indented));
-            log($"[Export] {w.Folder}: done -> {dir}");
-            return report;
         }
 
         /// <summary>

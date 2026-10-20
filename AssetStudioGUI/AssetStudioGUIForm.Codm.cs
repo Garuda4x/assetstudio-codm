@@ -106,8 +106,43 @@ namespace AssetStudioGUI
             }
             if (additive)
                 RefreshBrowserAfterLoad();
-            BuildAssetStructures();
+            await BuildAssetStructures();
             Activate();
+        }
+
+        /// <summary>
+        /// Select the most interesting mesh of what is loaded (first-person prefab first, then the
+        /// biggest) in the Asset List and show it in the Preview tab.
+        /// </summary>
+        internal bool PreviewBestMesh()
+        {
+            var meshes = visibleAssets.Select((a, i) => (asset: a, index: i)).Where(x => x.asset.Asset is Mesh).ToList();
+            if (meshes.Count == 0)
+            {
+                StatusStripUpdate("Nothing to preview: no Mesh loaded.");
+                return false;
+            }
+            int Score((AssetItem asset, int index) x)
+            {
+                var m = (Mesh)x.asset.Asset;
+                var name = x.asset.Text ?? "";
+                var score = (int)Math.Min(m.m_VertexCount, 1_000_000);
+                if (name.IndexOf("_1p", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("1p_", StringComparison.OrdinalIgnoreCase) >= 0) score += 5_000_000;
+                if (name.IndexOf("lod0", StringComparison.OrdinalIgnoreCase) >= 0) score += 1_000_000;
+                if (name.IndexOf("lod1", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("lod2", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("lod3", StringComparison.OrdinalIgnoreCase) >= 0) score -= 2_000_000;
+                if (m.m_Skin != null && m.m_Skin.Length > 0) score += 500_000;
+                return score;
+            }
+            var best = meshes.OrderByDescending(Score).First();
+            tabControl1.SelectedIndex = 1; // Asset List
+            assetListView.SelectedIndices.Clear();
+            assetListView.SelectedIndices.Add(best.index);
+            assetListView.EnsureVisible(best.index);
+            tabControl2.SelectedIndex = 0; // Preview
+            lastSelectedItem = best.asset;
+            PreviewAsset(best.asset);
+            Activate();
+            return true;
         }
     }
 }

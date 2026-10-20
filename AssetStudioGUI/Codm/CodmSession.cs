@@ -18,6 +18,7 @@ namespace AssetStudioGUI
         public static WwiseIndex Wwise { get; private set; }
         public static WeaponCatalog Catalog { get; private set; }
         public static CabIndex Cabs { get; private set; }
+        public static CharacterCatalog Characters { get; private set; }
         public static bool IsLoaded => Catalog != null;
 
         private static Task loadTask;
@@ -62,6 +63,7 @@ namespace AssetStudioGUI
                         wwise.LoadNames(Config, WeaponTokens(index), progress);
                         progress?.Invoke("CODM: building weapon catalog...");
                         var catalog = WeaponCatalog.Build(index, wwise, WeaponClassMap.Load(Config));
+                        Characters = CharacterCatalog.Build(index);
                         Index = index;
                         Wwise = wwise;
                         Catalog = catalog;
