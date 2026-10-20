@@ -1,80 +1,112 @@
-# AssetStudio
-[![Build status](https://ci.appveyor.com/api/projects/status/rnu7l90422pdewx4?svg=true)](https://ci.appveyor.com/project/Perfare/assetstudio/branch/master/artifacts)
+# AssetStudio, CoD Mobile fork
 
-**None of the repo, the tool, nor the repo owner is affiliated with, or sponsored or authorized by, Unity Technologies or its affiliates.**
+Private, single-user fork of [Perfare/AssetStudio](https://github.com/Perfare/AssetStudio) that
+reads the modified Unity 5.6.4 engine used by **Call of Duty Mobile (CN build)** and exports weapons,
+cosmetics, animations, textures and sounds for porting into other games and mods.
 
-AssetStudio is a tool for exploring, extracting and exporting assets and assetbundles.
+This repository is never published. It is pinned to the game install at
+`Q:\CODMGameApps\CN\emulator\Extract\CODM` (patch 55). **The game must never be launched, patched
+or updated from this machine; the tooling only reads files.**
 
-## Features
-* Support version:
-  * 3.4 - 2022.1
-* Support asset types:
-  * **Texture2D** : convert to png, tga, jpeg, bmp
-  * **Sprite** : crop Texture2D to png, tga, jpeg, bmp
-  * **AudioClip** : mp3, ogg, wav, m4a, fsb. support convert FSB file to WAV(PCM)
-  * **Font** : ttf, otf
-  * **Mesh** : obj
-  * **TextAsset**
-  * **Shader**
-  * **MovieTexture**
-  * **VideoClip**
-  * **MonoBehaviour** : json
-  * **Animator** : export to FBX file with bound AnimationClip
+## What it does
 
-## Requirements
+| Area | Status |
+|---|---|
+| Models (skinned meshes, skeleton, bind pose, weights, materials) | works, `.cast` primary, GLB/FBX optional |
+| Animations (CoD Mobile quantized dense clips) | works, see [docs/codm-formats.md](docs/codm-formats.md) |
+| Textures (DXT1/DXT5/BC7, streamed `.resS`) | works, png by default |
+| Pak navigation | obfuscated names are decoded; weapons grouped as base + skins |
+| Sounds (Wwise) | banks parsed, wems resolved across banks, converted with vgmstream |
+| Effects | FX bundles are linked by name; textures and an object list are exported |
+| Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
 
-- AssetStudio.net472
-   - [.NET Framework 4.7.2](https://dotnet.microsoft.com/download/dotnet-framework/net472)
-- AssetStudio.net5
-   - [.NET Desktop Runtime 5.0](https://dotnet.microsoft.com/download/dotnet/5.0)
-- AssetStudio.net6
-   - [.NET Desktop Runtime 6.0](https://dotnet.microsoft.com/download/dotnet/6.0)
+## Layout
 
+| Project | Purpose |
+|---|---|
+| `AssetStudio` | core reader (upstream) with the CoD Mobile fixes in `SerializedFile`, `Texture2D`, `Renderer`, `AnimationClip`, `Codm*.cs` |
+| `AssetStudioUtility` | converters and exporters: `ModelConverter`, `Cast/`, `GltfExporter`, FBX wrapper |
+| `AssetStudio.Codm` | everything CoD Mobile specific: name cipher, pak index, weapon catalog, Wwise, export service, config |
+| `AssetStudioGUI` | the WinForms app plus the **CODM** menu and weapon browser |
+| `CodmCli` | `codm.exe`, the command line front end over the same library |
+| `*Native`, `*Wrapper`, `AssetStudio.PInvoke` | upstream native texture decoder and FBX SDK glue |
+| `docs/` | format notes, install layout, CLI and GUI guides, research log |
 
-## Usage
-
-### Load Assets/AssetBundles
-
-Use **File-Load file** or **File-Load folder**.
-
-When AssetStudio loads AssetBundles, it decompresses and reads it directly in memory, which may cause a large amount of memory to be used. You can use **File-Extract file** or **File-Extract folder** to extract AssetBundles to another folder, and then read.
-
-### Extract/Decompress AssetBundles
-
-Use **File-Extract file** or **File-Extract folder**.
-
-### Export Assets
-
-use **Export** menu.
-
-### Export Model
-
-Export model from "Scene Hierarchy" using the **Model** menu.
-
-Export Animator from "Asset List" using the **Export** menu.
-
-#### With AnimationClip
-
-Select model from "Scene Hierarchy" then select the AnimationClip from "Asset List", using **Model-Export selected objects with AnimationClip** to export.
-
-Export Animator will export bound AnimationClip or use **Ctrl** to select Animator and AnimationClip from "Asset List", using **Export-Export Animator with selected AnimationClip** to export.
-
-### Export MonoBehaviour
-
-When you select an asset of the MonoBehaviour type for the first time, AssetStudio will ask you the directory where the assembly is located, please select the directory where the assembly is located, such as the `Managed` folder.
-
-#### For Il2Cpp
-
-First, use my another program [Il2CppDumper](https://github.com/Perfare/Il2CppDumper) to generate dummy dll, then when using AssetStudio to select the assembly directory, select the dummy dll folder.
+Everything targets `net472`.
 
 ## Build
 
-* Visual Studio 2022 or newer
-* **AssetStudioFBXNative** uses [FBX SDK 2020.2.1](https://www.autodesk.com/developer-network/platform-technologies/fbx-sdk-2020-2-1), before building, you need to install the FBX SDK and modify the project file, change include directory and library directory to point to the FBX SDK directory
+Visual Studio 2022: open `AssetStudio.sln`, build `AssetStudioGUI` (Debug, x64 natives are copied
+from `Texture2DDecoderNative\bin\x64\Debug` and `AssetStudioFBXNative\bin\x64\Debug`).
 
-## Open source libraries used
+Command line:
 
-### Texture2DDecoder
-* [Ishotihadus/mikunyan](https://github.com/Ishotihadus/mikunyan)
-* [BinomialLLC/crunch](https://github.com/BinomialLLC/crunch)
-* [Unity-Technologies/crunch](https://github.com/Unity-Technologies/crunch/tree/unity)
+```
+dotnet build AssetStudioGUI/AssetStudioGUI.csproj -c Debug
+dotnet build CodmCli/CodmCli.csproj -c Debug
+```
+
+Outputs: `AssetStudioGUI\bin\Debug\net472\AssetStudioGUI.exe` and `CodmCli\bin\Debug\net472\codm.exe`.
+The native DLLs must exist under `bin\x64` next to the exe; if a native project was never built
+with the C++ toolset, copy the DLLs from the GUI output folder.
+
+## Configuration
+
+`codm.config.json` at the repository root is found by walking up from the executable directory,
+so Debug and Release builds share it:
+
+```json
+{
+  "GameRoot": "Q:\\CODMGameApps\\CN\\emulator\\Extract\\CODM",
+  "PakFolders": [ "CODM_Data\\StreamingAssets\\AssetBundle", "PersistentData\\Puffer\\AssetBundle\\dynamic\\module", "PersistentData\\Extract\\55\\AssetBundle" ],
+  "SoundBankFolders": [ "...GeneratedSoundBanks\\Windows", "...\\Windows_HQ" ],
+  "VgmstreamPath": "",
+  "ExportRoot": "exports",
+  "PreferredLanguage": "English(US)",
+  "TextureFormat": "png",
+  "ScaleFactor": 1.0,
+  "SourcePriority": [ "puffer", "extract", "streaming" ],
+  "Diagnostics": false
+}
+```
+
+Set `VgmstreamPath` to `vgmstream-cli.exe` to get `.wav` next to the `.wem` files. `Diagnostics`
+turns the per-field reader logging back on (it is noisy and only useful when a bundle fails to parse).
+
+## Workflow
+
+GUI: start `AssetStudioGUI.exe`, open **CODM > Weapon browser** (Ctrl+W, or start with
+`--codm [weapon]`). Pick a weapon, check the paks you want, **Load checked** to browse them in the
+normal AssetStudio views, or **Export weapon** for a one-click folder with `models/` (Cast per
+Animator, animations under `anims/`), `textures/`, `sounds/<bank>/` and `manifest.json`.
+See [docs/gui.md](docs/gui.md).
+
+Command line:
+
+```
+codm weapons locus                 list the Locus family
+codm weapon 1648                   paks, base chain, components, fx and banks of the Locus railgun
+codm export 1648                   export it to the configured export root
+codm bank 130                      events and sounds of a skin sound set
+codm search cod_effects/particles  find paks by decoded name
+```
+
+See [docs/cli.md](docs/cli.md).
+
+## Known limitations
+
+- The bundles carry **no type trees** and the game is IL2CPP without `global-metadata.dat` on disk,
+  so `MonoBehaviour` fields (weapon definitions, FX and sound references) cannot be read generically.
+- The config tables under `PersistentData\Extract\55\DataTableBytes` are **encrypted**. They hold the
+  real weapon to sound/FX mapping; weapon relations here are derived from decoded names instead.
+  Some skins have no recognisable base weapon name and show up without a base.
+- Wwise event names are FNV hashes; events are listed by id. Containers inside banks are not walked,
+  so sound extraction is per bank, not per event.
+- Effects cannot be rebuilt as particle systems; the export gives their textures and object names.
+
+## Documentation
+
+- [docs/codm-install-layout.md](docs/codm-install-layout.md): where things live on disk, the name cipher, pak modules, sound banks
+- [docs/codm-formats.md](docs/codm-formats.md): engine format differences and the animation decoder
+- [docs/cli.md](docs/cli.md), [docs/gui.md](docs/gui.md)
+- [docs/research-log.md](docs/research-log.md): what the animation reverse-engineering probes tested
