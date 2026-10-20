@@ -25,6 +25,7 @@ namespace AssetStudio
 
         protected Renderer(ObjectReader reader) : base(reader)
         {
+            Logger.Info($"[Renderer] Start: position=0x{reader.Position - reader.byteStart:X}, platform={platform}, version=[{string.Join(",", version)}]");
             if (version[0] < 5) //5.0 down
             {
                 var m_Enabled = reader.ReadBoolean();
@@ -83,6 +84,8 @@ namespace AssetStudio
                 var m_LightmapIndexDynamic = reader.ReadUInt16();
             }
 
+            Logger.Info($"[Renderer] After header: 0x{reader.Position - reader.byteStart:X}");
+
             if (version[0] >= 3) //3.0 and up
             {
                 var m_LightmapTilingOffset = reader.ReadVector4();
@@ -93,12 +96,17 @@ namespace AssetStudio
                 var m_LightmapTilingOffsetDynamic = reader.ReadVector4();
             }
 
+            Logger.Info($"[Renderer] After tiling: 0x{reader.Position - reader.byteStart:X}");
+
             var m_MaterialsSize = reader.ReadInt32();
+            Logger.Info($"[Renderer] m_MaterialsSize={m_MaterialsSize}");
             m_Materials = new PPtr<Material>[m_MaterialsSize];
             for (int i = 0; i < m_MaterialsSize; i++)
             {
                 m_Materials[i] = new PPtr<Material>(reader);
             }
+
+            Logger.Info($"[Renderer] After materials: 0x{reader.Position - reader.byteStart:X}");
 
             if (version[0] < 3) //3.0 down
             {
@@ -109,14 +117,18 @@ namespace AssetStudio
                 if (version[0] > 5 || (version[0] == 5 && version[1] >= 5)) //5.5 and up
                 {
                     m_StaticBatchInfo = new StaticBatchInfo(reader);
+                    Logger.Info($"[Renderer] After StaticBatchInfo: 0x{reader.Position - reader.byteStart:X}");
                 }
                 else
                 {
                     m_SubsetIndices = reader.ReadUInt32Array();
+                    Logger.Info($"[Renderer] After SubsetIndices({m_SubsetIndices.Length}): 0x{reader.Position - reader.byteStart:X}");
                 }
 
                 var m_StaticBatchRoot = new PPtr<Transform>(reader);
             }
+
+            Logger.Info($"[Renderer] After static batch: 0x{reader.Position - reader.byteStart:X}");
 
             if (version[0] > 5 || (version[0] == 5 && version[1] >= 4)) //5.4 and up
             {
@@ -136,6 +148,8 @@ namespace AssetStudio
                 var m_LightProbeAnchor = new PPtr<Transform>(reader); //5.0 and up m_ProbeAnchor
             }
 
+            Logger.Info($"[Renderer] After probes: 0x{reader.Position - reader.byteStart:X}");
+
             if (version[0] > 4 || (version[0] == 4 && version[1] >= 3)) //4.3 and up
             {
                 if (version[0] == 4 && version[1] == 3) //4.3
@@ -147,10 +161,14 @@ namespace AssetStudio
                     var m_SortingLayerID = reader.ReadUInt32();
                 }
 
-                //SInt16 m_SortingLayer 5.6 and up
+                if (version[0] > 5 || (version[0] == 5 && version[1] >= 6)) //5.6 and up
+                {
+                    //SInt16 m_SortingLayer 5.6 and up - not present in CoD Mobile modified engine
+                }
                 var m_SortingOrder = reader.ReadInt16();
                 reader.AlignStream();
             }
+            Logger.Info($"[Renderer] End: 0x{reader.Position - reader.byteStart:X}");
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using Texture2DDecoder;
 
@@ -29,11 +30,22 @@ namespace AssetStudio
         {
             if (reader.Size == 0 || m_Width == 0 || m_Height == 0)
             {
+                Logger.Warning($"[Tex2DDecode] Skipping: dataSize={reader.Size}, width={m_Width}, height={m_Height}, format={m_TextureFormat}");
                 return false;
             }
+            Logger.Info($"[Tex2DDecode] Decoding: {m_Width}x{m_Height}, format={m_TextureFormat}, dataSize={reader.Size}, expectedOutput={outPutSize}");
             var flag = false;
-            var buff = BigArrayPool<byte>.Shared.Rent(reader.Size);
-            reader.GetData(buff);
+            byte[] buff;
+            try
+            {
+                buff = BigArrayPool<byte>.Shared.Rent(reader.Size);
+                reader.GetData(buff);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[Tex2DDecode] Failed to read texture data: {ex.Message}");
+                return false;
+            }
             switch (m_TextureFormat)
             {
                 case TextureFormat.Alpha8: //test pass

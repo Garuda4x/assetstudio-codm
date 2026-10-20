@@ -221,11 +221,24 @@ namespace AssetStudio
         {
             if (stringVersion != strippedVersion)
             {
-                unityVersion = stringVersion;
-                var buildSplit = Regex.Replace(stringVersion, @"\d", "").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
+                // Sanitize: strip control characters (newlines, tabs, etc.)
+                var sanitized = Regex.Replace(stringVersion, @"[\x00-\x1F\x7F]", "");
+                if (sanitized != stringVersion)
+                {
+                    Logger.Warning($"Version string contained control characters, sanitized: '{sanitized}' (original had {stringVersion.Length} chars)");
+                }
+                unityVersion = sanitized;
+                var buildSplit = Regex.Replace(sanitized, @"\d", "").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
                 buildType = new BuildType(buildSplit[0]);
-                var versionSplit = Regex.Replace(stringVersion, @"\D", ".").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
+                var versionSplit = Regex.Replace(sanitized, @"\D", ".").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
                 version = versionSplit.Select(int.Parse).ToArray();
+                // Unity versions should have at most 4 parts (major.minor.patch.build)
+                // If we get more, the version string is likely obfuscated/fake
+                if (version.Length > 4)
+                {
+                    Logger.Warning($"Parsed version has {version.Length} parts ({string.Join(".", version)}), likely obfuscated. Truncating to 4 parts.");
+                    version = version.Take(4).ToArray();
+                }
             }
         }
 

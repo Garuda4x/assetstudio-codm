@@ -39,6 +39,13 @@ namespace AssetStudio
 
         private void Load(string[] files)
         {
+            // Keep dedupe hash in sync with files already in memory (append loads).
+            assetsFileListHash.Clear();
+            foreach (var assetsFile in assetsFileList)
+            {
+                assetsFileListHash.Add(assetsFile.fileName);
+            }
+
             foreach (var file in files)
             {
                 importFiles.Add(file);
@@ -56,10 +63,15 @@ namespace AssetStudio
             importFiles.Clear();
             importFilesHash.Clear();
             noexistFiles.Clear();
-            assetsFileListHash.Clear();
 
             ReadAssets();
             ProcessAssets();
+
+            assetsFileListHash.Clear();
+            foreach (var assetsFile in assetsFileList)
+            {
+                assetsFileListHash.Add(assetsFile.fileName);
+            }
         }
 
         private void LoadFile(string fullName)
@@ -180,6 +192,11 @@ namespace AssetStudio
             try
             {
                 var bundleFile = new BundleFile(reader);
+                Logger.Info($"[Bundle] '{Path.GetFileName(reader.FullPath)}' contains {bundleFile.fileList.Length} files:");
+                foreach (var file in bundleFile.fileList)
+                {
+                    Logger.Info($"[Bundle]   '{file.fileName}' size={file.stream.Length}");
+                }
                 foreach (var file in bundleFile.fileList)
                 {
                     var dummyPath = Path.Combine(Path.GetDirectoryName(reader.FullPath), file.fileName);
@@ -190,6 +207,7 @@ namespace AssetStudio
                     }
                     else
                     {
+                        Logger.Info($"[Bundle]   Registered resource: '{file.fileName}' (type={subReader.FileType})");
                         resourceFileReaders[file.fileName] = subReader; //TODO
                     }
                 }
@@ -356,6 +374,11 @@ namespace AssetStudio
             {
                 assetsFile.SetVersion(SpecifyUnityVersion);
             }
+            else if (assetsFile.version.Length > 4)
+            {
+                // Version parsed to too many parts - likely obfuscated/fake
+                Logger.Warning($"Unity version '{assetsFile.unityVersion}' appears obfuscated (parsed to {assetsFile.version.Length} parts). Please specify the correct version in Options.");
+            }
         }
 
         public void Clear()
@@ -380,10 +403,22 @@ namespace AssetStudio
         {
             Logger.Info("Read assets...");
 
-            var progressCount = assetsFileList.Sum(x => x.m_Objects.Count);
+            var unread = assetsFileList.Where(x => x.Objects.Count == 0).ToList();
+            foreach (var assetsFile in unread)
+            {
+                Logger.Warning($"[VersionDebug] File: {assetsFile.fileName}, Unity version: {assetsFile.unityVersion}, Parsed: [{string.Join(".", assetsFile.version)}], Format: {assetsFile.header.m_Version}, IsStripped: {assetsFile.IsVersionStripped}");
+            }
+
+            var progressCount = unread.Sum(x => x.m_Objects.Count);
+            if (progressCount == 0)
+            {
+                Logger.Info("No new assets to read (all files already loaded).");
+                return;
+            }
+
             int i = 0;
             Progress.Reset();
-            foreach (var assetsFile in assetsFileList)
+            foreach (var assetsFile in unread)
             {
                 foreach (var objectInfo in assetsFile.m_Objects)
                 {
@@ -397,13 +432,32 @@ namespace AssetStudio
                                 obj = new Animation(objectReader);
                                 break;
                             case ClassIDType.AnimationClip:
-                                obj = new AnimationClip(objectReader);
+                                try
+                                {
+                                    obj = new AnimationClip(objectReader);
+                                }
+                                catch (Exception clipEx)
+                                {
+                                    // Soft-fail stub: keeps ClassIDType.AnimationClip but runtime type is Object.
+                                    // Export must check `is AnimationClip` — casting Asset will throw.
+                                    Logger.Warning($"Skipping AnimationClip PathID={objectInfo.m_PathID} size={objectInfo.byteSize}: {clipEx.GetType().Name}: {clipEx.Message}");
+                                    obj = new Object(objectReader);
+                                }
                                 break;
                             case ClassIDType.Animator:
                                 obj = new Animator(objectReader);
                                 break;
                             case ClassIDType.AnimatorController:
-                                obj = new AnimatorController(objectReader);
+                                try
+                                {
+                                    obj = new AnimatorController(objectReader);
+                                }
+                                catch (Exception acEx)
+                                {
+                                    // CODM AnimatorController layout ≠ stock Unity 5.6; avoid OOM killing the load.
+                                    Logger.Warning($"Skipping AnimatorController PathID={objectInfo.m_PathID} size={objectInfo.byteSize}: {acEx.GetType().Name}: {acEx.Message}");
+                                    obj = new Object(objectReader);
+                                }
                                 break;
                             case ClassIDType.AnimatorOverrideController:
                                 obj = new AnimatorOverrideController(objectReader);
@@ -454,7 +508,33 @@ namespace AssetStudio
                                 obj = new Shader(objectReader);
                                 break;
                             case ClassIDType.SkinnedMeshRenderer:
-                                obj = new SkinnedMeshRenderer(objectReader);
+                                // Dump raw bytes for debugging
+                                {
+                                    objectReader.Reset();
+                                    var dumpSize = Math.Min((int)objectReader.byteSize, 256);
+                                    var rawBytes = objectReader.ReadBytes(dumpSize);
+                                    var hexSb = new StringBuilder();
+                                    hexSb.AppendLine($"[HexDump] SkinnedMeshRenderer PathID={objectInfo.m_PathID}, totalSize={objectReader.byteSize} bytes, first {dumpSize}:");
+                                    for (int row = 0; row < dumpSize; row += 16)
+                                    {
+                                        hexSb.Append($"  {row:X4}: ");
+                                        for (int col = 0; col < 16 && row + col < dumpSize; col++)
+                                        {
+                                            hexSb.Append($"{rawBytes[row + col]:X2} ");
+                                        }
+                                        hexSb.AppendLine();
+                                    }
+                                    Logger.Info(hexSb.ToString());
+                                }
+                                try
+                                {
+                                    obj = new SkinnedMeshRenderer(objectReader);
+                                }
+                                catch (Exception smrEx)
+                                {
+                                    Logger.Warning($"Skipping SkinnedMeshRenderer PathID={objectInfo.m_PathID}: {smrEx.GetType().Name}: {smrEx.Message}");
+                                    obj = new Object(objectReader);
+                                }
                                 break;
                             case ClassIDType.Sprite:
                                 obj = new Sprite(objectReader);
@@ -492,7 +572,8 @@ namespace AssetStudio
                             .AppendLine($"Type {objectReader.type}")
                             .AppendLine($"PathID {objectInfo.m_PathID}")
                             .Append(e);
-                        Logger.Error(sb.ToString());
+                        // Use Warning for deserialization failures to avoid error popups
+                        Logger.Warning(sb.ToString());
                     }
 
                     Progress.Report(++i, progressCount);

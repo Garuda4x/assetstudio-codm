@@ -104,10 +104,73 @@ namespace AssetStudio
             {
                 var m_StreamingMipmaps = reader.ReadBoolean();
             }
+            // Standard Unity aligns after the boolean fields here.
+            // CoD Mobile's modified Unity 5.6 engine has extra fields after alignment
+            // that don't exist in standard Unity. Detect and skip them.
+            var preAlignPos = reader.Position;
             reader.AlignStream();
             if (version[0] > 2018 || (version[0] == 2018 && version[1] >= 2)) //2018.2 and up
             {
                 var m_StreamingMipmapsPriority = reader.ReadInt32();
+            }
+
+            // Peek ahead to detect CoD Mobile's extra fields.
+            // In standard Unity, the next two Int32s are m_ImageCount and m_TextureDimension.
+            // m_ImageCount should be 1 (occasionally up to 6 for cubemaps).
+            // m_TextureDimension should be 0-6.
+            // If they don't look right, CoD Mobile may have extra fields we need to skip.
+            var peekPos = reader.Position;
+            var peekVal1 = reader.ReadInt32();
+            var peekVal2 = reader.ReadInt32();
+            reader.Position = peekPos; // rewind
+
+            bool looksValid = (peekVal1 >= 1 && peekVal1 <= 6) && (peekVal2 >= -1 && peekVal2 <= 6);
+            if (!looksValid)
+            {
+                // Try skipping 8 bytes (2 extra Int32 fields in CoD Mobile's modified engine)
+                var skipPos = peekPos + 8;
+                if (skipPos + 8 <= reader.byteStart + reader.byteSize)
+                {
+                    reader.Position = skipPos;
+                    var skipVal1 = reader.ReadInt32();
+                    var skipVal2 = reader.ReadInt32();
+                    reader.Position = skipPos; // rewind to start of these fields
+
+                    bool skipLooksValid = (skipVal1 >= 1 && skipVal1 <= 6) && (skipVal2 >= -1 && skipVal2 <= 6);
+                    if (skipLooksValid)
+                    {
+                        Logger.Info($"[Tex2D] Skipping 8 extra bytes for '{m_Name}' (CoD Mobile variant: original peek={peekVal1},{peekVal2}; after skip={skipVal1},{skipVal2})");
+                    }
+                    else
+                    {
+                        // Neither works — try without alignment + skip 8
+                        reader.Position = preAlignPos + 8;
+                        if (reader.Position + 8 <= reader.byteStart + reader.byteSize)
+                        {
+                            var noAlignSkipVal1 = reader.ReadInt32();
+                            var noAlignSkipVal2 = reader.ReadInt32();
+                            bool noAlignSkipValid = (noAlignSkipVal1 >= 1 && noAlignSkipVal1 <= 6) && (noAlignSkipVal2 >= -1 && noAlignSkipVal2 <= 6);
+                            if (noAlignSkipValid)
+                            {
+                                reader.Position = preAlignPos + 8;
+                                Logger.Info($"[Tex2D] No-align + skip 8 for '{m_Name}' (CoD Mobile variant: vals={noAlignSkipVal1},{noAlignSkipVal2})");
+                            }
+                            else
+                            {
+                                // Fall back to standard position
+                                reader.Position = peekPos;
+                            }
+                        }
+                        else
+                        {
+                            reader.Position = peekPos;
+                        }
+                    }
+                }
+                else
+                {
+                    reader.Position = peekPos;
+                }
             }
             var m_ImageCount = reader.ReadInt32();
             var m_TextureDimension = reader.ReadInt32();
@@ -129,6 +192,23 @@ namespace AssetStudio
             if (image_data_size == 0 && ((version[0] == 5 && version[1] >= 3) || version[0] > 5))//5.3.0 and up
             {
                 m_StreamData = new StreamingInfo(reader);
+            }
+
+            // Calculate remaining bytes in this object
+            var currentPos = reader.Position;
+            var objectEnd = reader.byteStart + reader.byteSize;
+            var remaining = objectEnd - currentPos;
+
+            Logger.Info($"[Tex2D] '{m_Name}' {m_Width}x{m_Height} fmt={m_TextureFormat} completeSize={m_CompleteImageSize} inlineSize={image_data_size} streamPath='{m_StreamData?.path}' streamOffset={m_StreamData?.offset} streamSize={m_StreamData?.size} remaining={remaining} objectSize={reader.byteSize} version=[{string.Join(",", version)}]");
+
+            // If data size is 0 and stream path is empty, dump the entire object to diagnose
+            if (image_data_size == 0 && string.IsNullOrEmpty(m_StreamData?.path) && m_CompleteImageSize > 0)
+            {
+                var savedPos = reader.Position;
+                reader.Position = reader.byteStart;
+                var allBytes = reader.ReadBytes((int)System.Math.Min(reader.byteSize, 256));
+                reader.Position = savedPos;
+                Logger.Warning($"[Tex2D] MISSING DATA for '{m_Name}': Object bytes (first {allBytes.Length} of {reader.byteSize}): {System.BitConverter.ToString(allBytes).Replace("-", " ")}");
             }
 
             ResourceReader resourceReader;

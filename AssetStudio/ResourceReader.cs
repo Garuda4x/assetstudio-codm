@@ -56,6 +56,7 @@ namespace AssetStudio
                     assetsFile.assetsManager.resourceFileReaders.Add(resourceFileName, reader);
                     return reader;
                 }
+                Logger.Warning($"[ResourceReader] Can't find resource file '{resourceFileName}' (full path: '{path}'). Known resource files: {string.Join(", ", assetsFile.assetsManager.resourceFileReaders.Keys)}");
                 throw new FileNotFoundException($"Can't find the resource file {resourceFileName}");
             }
             else

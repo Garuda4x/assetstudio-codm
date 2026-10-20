@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -467,7 +467,7 @@ namespace AssetStudio
         public float[] m_UV7;
         public float[] m_Tangents;
         private VertexData m_VertexData;
-        private CompressedMesh m_CompressedMesh;
+        public CompressedMesh m_CompressedMesh;
         private StreamingInfo m_StreamData;
 
         public List<uint> m_Indices = new List<uint>();
