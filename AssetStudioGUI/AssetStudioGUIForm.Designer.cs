@@ -1,4 +1,4 @@
-﻿namespace AssetStudioGUI
+namespace AssetStudioGUI
 {
     partial class AssetStudioGUIForm
     {
@@ -34,6 +34,8 @@
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.loadFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.loadFolderToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.loadAdditionalFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.loadAdditionalFolderToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem1 = new System.Windows.Forms.ToolStripSeparator();
             this.extractFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extractFolderToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -57,6 +59,7 @@
             this.exportFilteredAssetsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator3 = new System.Windows.Forms.ToolStripSeparator();
             this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.exportOrphanCameraClipsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
             this.toolStripMenuItem2 = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem4 = new System.Windows.Forms.ToolStripMenuItem();
@@ -124,6 +127,7 @@
             this.copyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportSelectedAssetsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportAnimatorwithselectedAnimationClipMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.exportOrphanCameraAnimationClipsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.goToSceneHierarchyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.showOriginalFileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.menuStrip1.SuspendLayout();
@@ -167,6 +171,8 @@
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.loadFileToolStripMenuItem,
             this.loadFolderToolStripMenuItem,
+            this.loadAdditionalFileToolStripMenuItem,
+            this.loadAdditionalFolderToolStripMenuItem,
             this.toolStripMenuItem1,
             this.extractFileToolStripMenuItem,
             this.extractFolderToolStripMenuItem});
@@ -177,21 +183,35 @@
             // loadFileToolStripMenuItem
             // 
             this.loadFileToolStripMenuItem.Name = "loadFileToolStripMenuItem";
-            this.loadFileToolStripMenuItem.Size = new System.Drawing.Size(154, 22);
+            this.loadFileToolStripMenuItem.Size = new System.Drawing.Size(220, 22);
             this.loadFileToolStripMenuItem.Text = "Load file";
             this.loadFileToolStripMenuItem.Click += new System.EventHandler(this.loadFile_Click);
             // 
             // loadFolderToolStripMenuItem
             // 
             this.loadFolderToolStripMenuItem.Name = "loadFolderToolStripMenuItem";
-            this.loadFolderToolStripMenuItem.Size = new System.Drawing.Size(154, 22);
+            this.loadFolderToolStripMenuItem.Size = new System.Drawing.Size(220, 22);
             this.loadFolderToolStripMenuItem.Text = "Load folder";
             this.loadFolderToolStripMenuItem.Click += new System.EventHandler(this.loadFolder_Click);
+            // 
+            // loadAdditionalFileToolStripMenuItem
+            // 
+            this.loadAdditionalFileToolStripMenuItem.Name = "loadAdditionalFileToolStripMenuItem";
+            this.loadAdditionalFileToolStripMenuItem.Size = new System.Drawing.Size(220, 22);
+            this.loadAdditionalFileToolStripMenuItem.Text = "Load additional file(s)…";
+            this.loadAdditionalFileToolStripMenuItem.Click += new System.EventHandler(this.loadAdditionalFile_Click);
+            // 
+            // loadAdditionalFolderToolStripMenuItem
+            // 
+            this.loadAdditionalFolderToolStripMenuItem.Name = "loadAdditionalFolderToolStripMenuItem";
+            this.loadAdditionalFolderToolStripMenuItem.Size = new System.Drawing.Size(220, 22);
+            this.loadAdditionalFolderToolStripMenuItem.Text = "Load additional folder…";
+            this.loadAdditionalFolderToolStripMenuItem.Click += new System.EventHandler(this.loadAdditionalFolder_Click);
             // 
             // toolStripMenuItem1
             // 
             this.toolStripMenuItem1.Name = "toolStripMenuItem1";
-            this.toolStripMenuItem1.Size = new System.Drawing.Size(151, 6);
+            this.toolStripMenuItem1.Size = new System.Drawing.Size(217, 6);
             // 
             // extractFileToolStripMenuItem
             // 
@@ -335,6 +355,7 @@
             this.exportFilteredAssetsMenuItem,
             this.toolStripSeparator3,
             this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem,
+            this.exportOrphanCameraClipsToolStripMenuItem,
             this.toolStripSeparator4,
             this.toolStripMenuItem2,
             this.toolStripMenuItem3,
@@ -373,14 +394,22 @@
             // exportAnimatorWithSelectedAnimationClipToolStripMenuItem
             // 
             this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem.Name = "exportAnimatorWithSelectedAnimationClipToolStripMenuItem";
-            this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem.Size = new System.Drawing.Size(284, 22);
+            this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem.Size = new System.Drawing.Size(420, 22);
             this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem.Text = "Animator + selected AnimationClips";
             this.exportAnimatorWithSelectedAnimationClipToolStripMenuItem.Click += new System.EventHandler(this.exportAnimatorwithAnimationClipMenuItem_Click);
+            // 
+            // exportOrphanCameraClipsToolStripMenuItem
+            // 
+            this.exportOrphanCameraClipsToolStripMenuItem.ForeColor = System.Drawing.Color.DarkRed;
+            this.exportOrphanCameraClipsToolStripMenuItem.Name = "exportOrphanCameraClipsToolStripMenuItem";
+            this.exportOrphanCameraClipsToolStripMenuItem.Size = new System.Drawing.Size(420, 22);
+            this.exportOrphanCameraClipsToolStripMenuItem.Text = "⚠ EXCEPTION: Orphan/Camera clips (synthetic bone)…";
+            this.exportOrphanCameraClipsToolStripMenuItem.Click += new System.EventHandler(this.exportOrphanCameraClipsMenuItem_Click);
             // 
             // toolStripSeparator4
             // 
             this.toolStripSeparator4.Name = "toolStripSeparator4";
-            this.toolStripSeparator4.Size = new System.Drawing.Size(281, 6);
+            this.toolStripSeparator4.Size = new System.Drawing.Size(417, 6);
             // 
             // toolStripMenuItem2
             // 
@@ -1020,10 +1049,11 @@
             this.copyToolStripMenuItem,
             this.exportSelectedAssetsToolStripMenuItem,
             this.exportAnimatorwithselectedAnimationClipMenuItem,
+            this.exportOrphanCameraAnimationClipsMenuItem,
             this.goToSceneHierarchyToolStripMenuItem,
             this.showOriginalFileToolStripMenuItem});
             this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.Size = new System.Drawing.Size(327, 114);
+            this.contextMenuStrip1.Size = new System.Drawing.Size(420, 136);
             // 
             // copyToolStripMenuItem
             // 
@@ -1042,10 +1072,19 @@
             // exportAnimatorwithselectedAnimationClipMenuItem
             // 
             this.exportAnimatorwithselectedAnimationClipMenuItem.Name = "exportAnimatorwithselectedAnimationClipMenuItem";
-            this.exportAnimatorwithselectedAnimationClipMenuItem.Size = new System.Drawing.Size(326, 22);
+            this.exportAnimatorwithselectedAnimationClipMenuItem.Size = new System.Drawing.Size(419, 22);
             this.exportAnimatorwithselectedAnimationClipMenuItem.Text = "Export Animator + selected AnimationClips";
             this.exportAnimatorwithselectedAnimationClipMenuItem.Visible = false;
             this.exportAnimatorwithselectedAnimationClipMenuItem.Click += new System.EventHandler(this.exportAnimatorwithAnimationClipMenuItem_Click);
+            // 
+            // exportOrphanCameraAnimationClipsMenuItem
+            // 
+            this.exportOrphanCameraAnimationClipsMenuItem.ForeColor = System.Drawing.Color.DarkRed;
+            this.exportOrphanCameraAnimationClipsMenuItem.Name = "exportOrphanCameraAnimationClipsMenuItem";
+            this.exportOrphanCameraAnimationClipsMenuItem.Size = new System.Drawing.Size(419, 22);
+            this.exportOrphanCameraAnimationClipsMenuItem.Text = "⚠ EXCEPTION: Orphan/Camera clips (synthetic bone)…";
+            this.exportOrphanCameraAnimationClipsMenuItem.Visible = false;
+            this.exportOrphanCameraAnimationClipsMenuItem.Click += new System.EventHandler(this.exportOrphanCameraClipsMenuItem_Click);
             // 
             // goToSceneHierarchyToolStripMenuItem
             // 
@@ -1123,6 +1162,8 @@
         private System.Windows.Forms.TextBox listSearch;
         private System.Windows.Forms.ToolStripMenuItem loadFileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem loadFolderToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem loadAdditionalFileToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem loadAdditionalFolderToolStripMenuItem;
         private System.Windows.Forms.ListView assetListView;
         private System.Windows.Forms.ColumnHeader columnHeaderName;
         private System.Windows.Forms.ColumnHeader columnHeaderSize;
@@ -1173,6 +1214,7 @@
         private System.Windows.Forms.ContextMenuStrip contextMenuStrip1;
         private System.Windows.Forms.ToolStripMenuItem showOriginalFileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportAnimatorwithselectedAnimationClipMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem exportOrphanCameraAnimationClipsMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportSelectedAssetsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem filterTypeToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem allToolStripMenuItem;
@@ -1180,6 +1222,7 @@
         private System.Windows.Forms.ToolStripMenuItem exportSelectedObjectsWithAnimationClipToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator3;
         private System.Windows.Forms.ToolStripMenuItem exportAnimatorWithSelectedAnimationClipToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem exportOrphanCameraClipsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportAllObjectssplitToolStripMenuItem1;
         private System.Windows.Forms.ToolStripMenuItem goToSceneHierarchyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportSelectedObjectsmergeToolStripMenuItem;

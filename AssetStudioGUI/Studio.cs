@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -136,6 +136,9 @@ namespace AssetStudioGUI
         {
             StatusStripUpdate("Building asset list...");
 
+            exportableAssets.Clear();
+            visibleAssets = exportableAssets;
+
             string productName = null;
             var objectCount = assetsManager.assetsFileList.Sum(x => x.Objects.Count);
             var objectAssetItemDic = new Dictionary<Object, AssetItem>(objectCount);
@@ -229,6 +232,11 @@ namespace AssetStudioGUI
                         case NamedObject m_NamedObject:
                             assetItem.Text = m_NamedObject.m_Name;
                             break;
+                    }
+                    // Soft-fail AnimationClip stubs keep ClassIDType.AnimationClip but are bare Objects
+                    if (asset.type == ClassIDType.AnimationClip && !(asset is AnimationClip))
+                    {
+                        assetItem.Text = "[PARSE FAILED] AnimationClip" + assetItem.UniqueID;
                     }
                     if (assetItem.Text == "")
                     {
@@ -598,6 +606,39 @@ namespace AssetStudioGUI
                 {
                     MessageBox.Show($"Export Animator:{animator.Text} error\r\n{ex.Message}\r\n{ex.StackTrace}");
                     StatusStripUpdate("Error in export");
+                }
+            });
+        }
+
+        /// <summary>
+        /// EXCEPTION path only — synthetic Camera bone for root-path orphan/camera clips.
+        /// Does not use ModelConverter / Animator export.
+        /// </summary>
+        public static void ExportOrphanCameraAnimationClips(List<AssetItem> animationList, string exportPath)
+        {
+            ThreadPool.QueueUserWorkItem(state =>
+            {
+                Progress.Reset();
+                StatusStripUpdate("EXCEPTION: exporting orphan/camera clips (synthetic Camera bone)…");
+                try
+                {
+                    // Explicit Exporter. — Studio method has the same name and would recurse.
+                    Exporter.ExportOrphanCameraAnimationClips(animationList, exportPath);
+                    if (Properties.Settings.Default.openAfterExport)
+                    {
+                        OpenFolderInExplorer(exportPath);
+                    }
+                    Progress.Report(1, 1);
+                    StatusStripUpdate("Finished orphan/camera exception export");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        "Orphan/Camera exception export failed\r\n" + ex.Message,
+                        "Orphan/Camera export",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    StatusStripUpdate("Error in orphan/camera export");
                 }
             });
         }

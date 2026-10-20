@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using Newtonsoft.Json;
 using OpenTK;
 using OpenTK.Graphics.OpenGL;
@@ -162,6 +162,56 @@ namespace AssetStudioGUI
                 assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
                 await Task.Run(() => assetsManager.LoadFolder(openFolderDialog.Folder));
                 BuildAssetStructures();
+            }
+        }
+
+        private async void loadAdditionalFile_Click(object sender, EventArgs e)
+        {
+            openFileDialog1.InitialDirectory = openDirectoryBackup;
+            if (openFileDialog1.ShowDialog(this) == DialogResult.OK)
+            {
+                openDirectoryBackup = Path.GetDirectoryName(openFileDialog1.FileNames[0]);
+                assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
+                await Task.Run(() => assetsManager.LoadFiles(openFileDialog1.FileNames));
+                RefreshBrowserAfterLoad();
+                BuildAssetStructures();
+            }
+        }
+
+        private async void loadAdditionalFolder_Click(object sender, EventArgs e)
+        {
+            var openFolderDialog = new OpenFolderDialog();
+            openFolderDialog.InitialFolder = openDirectoryBackup;
+            if (openFolderDialog.ShowDialog(this) == DialogResult.OK)
+            {
+                openDirectoryBackup = openFolderDialog.Folder;
+                assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
+                await Task.Run(() => assetsManager.LoadFolder(openFolderDialog.Folder));
+                RefreshBrowserAfterLoad();
+                BuildAssetStructures();
+            }
+        }
+
+        /// <summary>
+        /// Rebuild asset list/tree UI without clearing AssetsManager (used by Load additional).
+        /// </summary>
+        private void RefreshBrowserAfterLoad()
+        {
+            sceneTreeView.Nodes.Clear();
+            assetListView.VirtualListSize = 0;
+            assetListView.Items.Clear();
+            classesListView.Items.Clear();
+            classesListView.Groups.Clear();
+            lastSelectedItem = null;
+            sortColumn = -1;
+            reverseSort = false;
+            enableFiltering = false;
+            listSearch.Text = " Filter ";
+
+            var count = filterTypeToolStripMenuItem.DropDownItems.Count;
+            for (var i = 1; i < count; i++)
+            {
+                filterTypeToolStripMenuItem.DropDownItems.RemoveAt(1);
             }
         }
 
@@ -1258,6 +1308,7 @@ namespace AssetStudioGUI
                 goToSceneHierarchyToolStripMenuItem.Visible = false;
                 showOriginalFileToolStripMenuItem.Visible = false;
                 exportAnimatorwithselectedAnimationClipMenuItem.Visible = false;
+                exportOrphanCameraAnimationClipsMenuItem.Visible = false;
 
                 if (assetListView.SelectedIndices.Count == 1)
                 {
@@ -1270,6 +1321,10 @@ namespace AssetStudioGUI
                     if (selectedAssets.Any(x => x.Type == ClassIDType.Animator) && selectedAssets.Any(x => x.Type == ClassIDType.AnimationClip))
                     {
                         exportAnimatorwithselectedAnimationClipMenuItem.Visible = true;
+                    }
+                    if (selectedAssets.Any(x => x.Type == ClassIDType.AnimationClip))
+                    {
+                        exportOrphanCameraAnimationClipsMenuItem.Visible = true;
                     }
                 }
 
@@ -1323,6 +1378,117 @@ namespace AssetStudioGUI
                     var exportPath = Path.Combine(saveFolderDialog.Folder, "Animator") + Path.DirectorySeparatorChar;
                     ExportAnimatorWithAnimationClip(animator, animationList, exportPath);
                 }
+            }
+        }
+
+        private void exportOrphanCameraClipsMenuItem_Click(object sender, EventArgs e)
+        {
+            var animationList = GetSelectedAssets()
+                .Where(x => x.Type == ClassIDType.AnimationClip)
+                .ToList();
+
+            if (animationList.Count == 0)
+            {
+                MessageBox.Show(
+                    "Select one or more AnimationClip assets first.\n\n" +
+                    "This EXCEPTION export invents a synthetic Camera bone for root-path (orphan/camera) clips only.\n" +
+                    "Normal weapon/character clips: use Export → Animator + selected AnimationClips.",
+                    "Orphan/Camera exception export",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            var accepted = new List<string>();
+            var rejected = new List<string>();
+            var nonCameraNamed = new List<string>();
+            foreach (var item in animationList)
+            {
+                if (!(item.Asset is AnimationClip clip))
+                {
+                    rejected.Add($"{item.Text}: not a parsed AnimationClip (stub/failed parse)");
+                    continue;
+                }
+
+                if (OrphanAnimationClipConverter.TryValidateRootOnly(clip, out var reason))
+                {
+                    accepted.Add(clip.m_Name);
+                    if (clip.m_Name == null ||
+                        clip.m_Name.IndexOf("Camera", StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        nonCameraNamed.Add(clip.m_Name);
+                    }
+                }
+                else
+                {
+                    rejected.Add($"{clip.m_Name}: {reason}");
+                }
+            }
+
+            if (accepted.Count == 0)
+            {
+                MessageBox.Show(
+                    "None of the selected clips are eligible.\n\n" +
+                    "Only clips that animate the Animator ROOT (path hash 0 / empty legacy path) are allowed.\n" +
+                    "Clips with child bone paths are refused so this never invents a pile of bones at origin.\n\n" +
+                    string.Join("\n\n", rejected),
+                    "Orphan/Camera exception export — refused",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            var warn = new StringBuilder();
+            warn.AppendLine("⚠ EXCEPTION EXPORT — NOT the normal workflow");
+            warn.AppendLine();
+            warn.AppendLine("This does NOT use a weapon Animator or a real skeleton.");
+            warn.AppendLine("It invents a single bone named \"Camera\" at the world origin");
+            warn.AppendLine("and dumps root-path animation curves onto it.");
+            warn.AppendLine();
+            warn.AppendLine("Use ONLY for CODM orphan / *_Camera takes (inspection, MVP, etc.).");
+            warn.AppendLine("Do NOT use this for random AnimationClips — they will be refused");
+            warn.AppendLine("if they bind anything other than the Animator root.");
+            warn.AppendLine();
+            warn.AppendLine($"Eligible: {accepted.Count} clip(s)");
+            foreach (var n in accepted.Take(12))
+                warn.AppendLine("  ✓ " + n);
+            if (accepted.Count > 12)
+                warn.AppendLine($"  … and {accepted.Count - 12} more");
+            if (rejected.Count > 0)
+            {
+                warn.AppendLine();
+                warn.AppendLine($"Will SKIP {rejected.Count} ineligible clip(s):");
+                foreach (var r in rejected.Take(8))
+                    warn.AppendLine("  ✗ " + r);
+                if (rejected.Count > 8)
+                    warn.AppendLine($"  … and {rejected.Count - 8} more");
+            }
+            if (nonCameraNamed.Count > 0)
+            {
+                warn.AppendLine();
+                warn.AppendLine($"Note: {nonCameraNamed.Count} eligible clip(s) do not contain \"Camera\" in the name.");
+            }
+            warn.AppendLine();
+            warn.AppendLine("Normal exports are unchanged: Animator + selected AnimationClips.");
+            warn.AppendLine();
+            warn.Append("Continue with this exception export?");
+
+            var confirm = MessageBox.Show(
+                warn.ToString(),
+                "⚠ EXCEPTION: Orphan/Camera synthetic bone",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (confirm != DialogResult.Yes)
+                return;
+
+            var saveFolderDialog = new OpenFolderDialog();
+            saveFolderDialog.InitialFolder = saveDirectoryBackup;
+            if (saveFolderDialog.ShowDialog(this) == DialogResult.OK)
+            {
+                saveDirectoryBackup = saveFolderDialog.Folder;
+                var exportPath = Path.Combine(saveFolderDialog.Folder, "OrphanCamera_Synthetic") + Path.DirectorySeparatorChar;
+                ExportOrphanCameraAnimationClips(animationList, exportPath);
             }
         }
 
