@@ -13,7 +13,7 @@ namespace AssetStudioGUI
         public static bool ExportTexture2D(AssetItem item, string exportPath)
         {
             var m_Texture2D = (Texture2D)item.Asset;
-            Logger.Info($"[TexExport] '{m_Texture2D.m_Name}' {m_Texture2D.m_Width}x{m_Texture2D.m_Height} fmt={m_Texture2D.m_TextureFormat} imageDataSize={m_Texture2D.image_data.Size} convertTexture={Properties.Settings.Default.convertTexture}");
+            CodmDiagnostics.Log($"[TexExport] '{m_Texture2D.m_Name}' {m_Texture2D.m_Width}x{m_Texture2D.m_Height} fmt={m_Texture2D.m_TextureFormat} imageDataSize={m_Texture2D.image_data.Size} convertTexture={Properties.Settings.Default.convertTexture}");
             if (Properties.Settings.Default.convertTexture)
             {
                 var type = Properties.Settings.Default.convertType;
@@ -173,7 +173,7 @@ namespace AssetStudioGUI
                             boneNames[b] = $"Bone_{b}_Hash{m_Mesh.m_BoneNameHashes[b]}";
                         }
                     }
-                    Logger.Info($"[SkinExport] Resolved bone names using Avatar '{matchedAvatar.m_Name}'");
+                    CodmDiagnostics.Log($"[SkinExport] Resolved bone names using Avatar '{matchedAvatar.m_Name}'");
                 }
                 else
                 {
@@ -192,7 +192,7 @@ namespace AssetStudioGUI
                     skinSb.AppendLine($"{v},{skin.boneIndex[0]},{GetBoneName(boneNames, skin.boneIndex[0])},{skin.weight[0]},{skin.boneIndex[1]},{GetBoneName(boneNames, skin.boneIndex[1])},{skin.weight[1]},{skin.boneIndex[2]},{GetBoneName(boneNames, skin.boneIndex[2])},{skin.weight[2]},{skin.boneIndex[3]},{GetBoneName(boneNames, skin.boneIndex[3])},{skin.weight[3]}");
                 }
                 File.WriteAllText(skinPath, skinSb.ToString());
-                Logger.Info($"[SkinExport] Exported {m_Mesh.m_Skin.Length} vertex weights to {Path.GetFileName(skinPath)}");
+                CodmDiagnostics.Log($"[SkinExport] Exported {m_Mesh.m_Skin.Length} vertex weights to {Path.GetFileName(skinPath)}");
 
                 // Export bone info
                 var bonePath = Path.ChangeExtension(exportFullPath, ".bones.csv");
@@ -217,11 +217,11 @@ namespace AssetStudioGUI
                         bindSb.AppendLine($"{b},{name},{m.M00},{m.M01},{m.M02},{m.M03},{m.M10},{m.M11},{m.M12},{m.M13},{m.M20},{m.M21},{m.M22},{m.M23},{m.M30},{m.M31},{m.M32},{m.M33}");
                     }
                     File.WriteAllText(bindPath, bindSb.ToString());
-                    Logger.Info($"[SkinExport] Exported {m_Mesh.m_BindPose.Length} bind poses to {Path.GetFileName(bindPath)}");
+                    CodmDiagnostics.Log($"[SkinExport] Exported {m_Mesh.m_BindPose.Length} bind poses to {Path.GetFileName(bindPath)}");
                 }
             }
 
-            Logger.Info($"[MeshDebug] Mesh '{m_Mesh.m_Name}': vertices={m_Mesh.m_VertexCount}, skin={m_Mesh.m_Skin?.Length ?? 0}, bindPose={m_Mesh.m_BindPose?.Length ?? 0}, boneNameHashes={m_Mesh.m_BoneNameHashes?.Length ?? 0}");
+            CodmDiagnostics.Log($"[MeshDebug] Mesh '{m_Mesh.m_Name}': vertices={m_Mesh.m_VertexCount}, skin={m_Mesh.m_Skin?.Length ?? 0}, bindPose={m_Mesh.m_BindPose?.Length ?? 0}, boneNameHashes={m_Mesh.m_BoneNameHashes?.Length ?? 0}");
             if (m_Mesh.m_Skin?.Length > 0)
             {
                 var uniqueBones = new HashSet<int>();
@@ -236,7 +236,7 @@ namespace AssetStudioGUI
                     if (s.boneIndex[0] != 0 || s.weight[0] != 1.0f || s.weight[1] != 0 || s.weight[2] != 0 || s.weight[3] != 0)
                         nonDefaultCount++;
                 }
-                Logger.Info($"[MeshDebug]   Unique bones referenced: {uniqueBones.Count} ({string.Join(",", uniqueBones)}), non-default weights: {nonDefaultCount}/{m_Mesh.m_Skin.Length}");
+                CodmDiagnostics.Log($"[MeshDebug]   Unique bones referenced: {uniqueBones.Count} ({string.Join(",", uniqueBones)}), non-default weights: {nonDefaultCount}/{m_Mesh.m_Skin.Length}");
             }
 
             var sb = new StringBuilder();
@@ -340,7 +340,7 @@ namespace AssetStudioGUI
 
             var matchedAvatar = FindAvatarForMesh(m_Mesh);
 
-            Logger.Info($"[SkinnedFBX] Exporting '{m_Mesh.m_Name}' with {m_Mesh.m_Skin.Length} vertices, {m_Mesh.m_BindPose?.Length ?? 0} bones, Avatar={matchedAvatar?.m_Name ?? "none"}");
+            CodmDiagnostics.Log($"[SkinnedFBX] Exporting '{m_Mesh.m_Name}' with {m_Mesh.m_Skin.Length} vertices, {m_Mesh.m_BindPose?.Length ?? 0} bones, Avatar={matchedAvatar?.m_Name ?? "none"}");
 
             // Find materials by locating SkinnedMeshRenderers that reference this mesh
             var materials = FindMaterialsForMesh(m_Mesh);
@@ -370,7 +370,7 @@ namespace AssetStudioGUI
             var matchedAvatar = FindAvatarForMesh(m_Mesh);
             var materials = FindMaterialsForMesh(m_Mesh);
 
-            Logger.Info($"[glTF] Exporting skinned mesh '{m_Mesh.m_Name}' with {m_Mesh.m_Skin.Length} vertices, {m_Mesh.m_BindPose?.Length ?? 0} bones, Avatar={matchedAvatar?.m_Name ?? "none"}, materials={materials.Count}");
+            CodmDiagnostics.Log($"[glTF] Exporting skinned mesh '{m_Mesh.m_Name}' with {m_Mesh.m_Skin.Length} vertices, {m_Mesh.m_BindPose?.Length ?? 0} bones, Avatar={matchedAvatar?.m_Name ?? "none"}, materials={materials.Count}");
 
             var convert = new ModelConverter(m_Mesh, matchedAvatar, Properties.Settings.Default.convertType, materials.Count > 0 ? materials.ToArray() : null);
             var scaleFactor = (float)Properties.Settings.Default.scaleFactor;
@@ -421,7 +421,7 @@ namespace AssetStudioGUI
                             else
                                 materials.Add(null);
                         }
-                        Logger.Info($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from SMR (PathID={smr.m_PathID})");
+                        CodmDiagnostics.Log($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from SMR (PathID={smr.m_PathID})");
                         return materials;
                     }
                 }
@@ -444,7 +444,7 @@ namespace AssetStudioGUI
                                 else
                                     materials.Add(null);
                             }
-                            Logger.Info($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from SMR in {file.fileName}");
+                            CodmDiagnostics.Log($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from SMR in {file.fileName}");
                             return materials;
                         }
                     }
@@ -470,7 +470,7 @@ namespace AssetStudioGUI
             }
             if (materials.Count > 0)
             {
-                Logger.Info($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' by name match (pattern='{nameForMatch}')");
+                CodmDiagnostics.Log($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' by name match (pattern='{nameForMatch}')");
                 return materials;
             }
 
@@ -484,7 +484,7 @@ namespace AssetStudioGUI
             }
             if (materials.Count > 0)
             {
-                Logger.Info($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from same asset file");
+                CodmDiagnostics.Log($"[Materials] Found {materials.Count} materials for '{mesh.m_Name}' from same asset file");
                 return materials;
             }
 
@@ -758,7 +758,7 @@ namespace AssetStudioGUI
             scriptText = scriptText.Replace("print('Import complete!')", materialSection.ToString() + "print('Import complete!')");
 
             File.WriteAllText(scriptPath, scriptText);
-            Logger.Info($"[SkinnedFBX] Generated Blender script: {Path.GetFileName(scriptPath)}");
+            CodmDiagnostics.Log($"[SkinnedFBX] Generated Blender script: {Path.GetFileName(scriptPath)}");
         }
 
         public static bool ExportMovieTexture(AssetItem item, string exportPath)

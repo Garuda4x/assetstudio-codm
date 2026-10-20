@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AssetStudio;
 
-namespace PakScanner
+namespace CodmCli
 {
     /// <summary>
     /// Full load via AssetsManager and list MonoScript / MonoBehaviour metadata plus

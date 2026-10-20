@@ -26,6 +26,13 @@ namespace AssetStudio
         private static readonly NQuaternion YupToZupRotation =
             NQuaternion.CreateFromAxisAngle(NVector3.UnitX, (float)(Math.PI / 2.0));
 
+        /// <summary>
+        /// When set, animation files that end up with zero curves (clip does not bind to this skeleton)
+        /// are deleted instead of left as skeleton-only duds. Off by default to keep the GUI behaviour;
+        /// the CODM export service turns it on.
+        /// </summary>
+        public static bool SkipEmptyAnimations { get; set; }
+
         public static void Export(string directory, string baseName, IImported imported, float scaleFactor = 1.0f)
         {
             if (imported?.RootFrame == null)
@@ -64,7 +71,8 @@ namespace AssetStudio
                 var animName = SanitizeFileName(string.IsNullOrEmpty(anim.Name) ? $"anim_{written}" : anim.Name);
                 var animPath = Path.Combine(animDir, animName + ".cast");
                 WriteAnimation(animPath, anim, bones, rootBoneNames, scaleFactor);
-                written++;
+                if (File.Exists(animPath))
+                    written++;
             }
 
             Logger.Info($"[Cast] Animations -> {written} file(s) in anims/");
@@ -152,6 +160,12 @@ namespace AssetStudio
 
             if (curvesWritten == 0)
             {
+                if (SkipEmptyAnimations)
+                {
+                    try { File.Delete(path); } catch { /* leave the dud in place */ }
+                    CodmDiagnostics.Log($"[Cast] '{anim.Name}' skipped: no curves bind to this skeleton");
+                    return;
+                }
                 Logger.Warning(
                     $"[Cast] '{anim.Name}' wrote 0 curves (skeleton-only ~dud). " +
                     $"tracks={anim.TrackList?.Count ?? 0}, nullPath={skippedNullPath}, " +

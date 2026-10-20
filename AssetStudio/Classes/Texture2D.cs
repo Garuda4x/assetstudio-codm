@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace AssetStudio
 {
@@ -139,7 +139,7 @@ namespace AssetStudio
                     bool skipLooksValid = (skipVal1 >= 1 && skipVal1 <= 6) && (skipVal2 >= -1 && skipVal2 <= 6);
                     if (skipLooksValid)
                     {
-                        Logger.Info($"[Tex2D] Skipping 8 extra bytes for '{m_Name}' (CoD Mobile variant: original peek={peekVal1},{peekVal2}; after skip={skipVal1},{skipVal2})");
+                        CodmDiagnostics.Log($"[Tex2D] Skipping 8 extra bytes for '{m_Name}' (CoD Mobile variant: original peek={peekVal1},{peekVal2}; after skip={skipVal1},{skipVal2})");
                     }
                     else
                     {
@@ -153,7 +153,7 @@ namespace AssetStudio
                             if (noAlignSkipValid)
                             {
                                 reader.Position = preAlignPos + 8;
-                                Logger.Info($"[Tex2D] No-align + skip 8 for '{m_Name}' (CoD Mobile variant: vals={noAlignSkipVal1},{noAlignSkipVal2})");
+                                CodmDiagnostics.Log($"[Tex2D] No-align + skip 8 for '{m_Name}' (CoD Mobile variant: vals={noAlignSkipVal1},{noAlignSkipVal2})");
                             }
                             else
                             {
@@ -199,7 +199,7 @@ namespace AssetStudio
             var objectEnd = reader.byteStart + reader.byteSize;
             var remaining = objectEnd - currentPos;
 
-            Logger.Info($"[Tex2D] '{m_Name}' {m_Width}x{m_Height} fmt={m_TextureFormat} completeSize={m_CompleteImageSize} inlineSize={image_data_size} streamPath='{m_StreamData?.path}' streamOffset={m_StreamData?.offset} streamSize={m_StreamData?.size} remaining={remaining} objectSize={reader.byteSize} version=[{string.Join(",", version)}]");
+            CodmDiagnostics.Log($"[Tex2D] '{m_Name}' {m_Width}x{m_Height} fmt={m_TextureFormat} completeSize={m_CompleteImageSize} inlineSize={image_data_size} streamPath='{m_StreamData?.path}' streamOffset={m_StreamData?.offset} streamSize={m_StreamData?.size} remaining={remaining} objectSize={reader.byteSize} version=[{string.Join(",", version)}]");
 
             // If data size is 0 and stream path is empty, dump the entire object to diagnose
             if (image_data_size == 0 && string.IsNullOrEmpty(m_StreamData?.path) && m_CompleteImageSize > 0)

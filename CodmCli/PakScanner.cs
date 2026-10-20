@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using AssetStudio;
 
-namespace PakScanner
+namespace CodmCli
 {
     /// <summary>
     /// Lightweight scanner that reads Unity bundle (.pak) headers and asset metadata
@@ -158,7 +158,7 @@ namespace PakScanner
                     assetsFile.SetVersion(unityRevision);
                 }
 
-                // Count asset types from object info (lightweight — no deserialization)
+                // Count asset types from object info (lightweight â€” no deserialization)
                 foreach (var objInfo in assetsFile.m_Objects)
                 {
                     var typeName = ((ClassIDType)objInfo.classID).ToString();
@@ -210,7 +210,7 @@ namespace PakScanner
 
                             case ClassIDType.GameObject:
                                 // Read past component array to get name
-                                // Too complex — skip for lightweight scan
+                                // Too complex â€” skip for lightweight scan
                                 break;
                         }
                     }

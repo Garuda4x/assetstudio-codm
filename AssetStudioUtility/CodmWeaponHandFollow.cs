@@ -126,7 +126,7 @@ namespace AssetStudio
             bone01Track.Translations = newPos;
             if (!PositionOnly)
                 bone01Track.Rotations = newRot;
-            Logger.Warning(
+            CodmDiagnostics.Warn(
                 $"[AnimExport] CODM weapon-hand follow on '{anim.Name}': " +
                 $"{(PositionOnly ? "P-only " : "")}retargeted Bone01 to b_RightHand ({fixedCount} keys)");
         }

@@ -100,7 +100,7 @@ namespace AssetStudio
                 }
             }
 
-            Logger.Info(
+            CodmDiagnostics.Log(
                 $"[AnimClip] Bone01 compensated by inv(BRH.R) on '{clip.m_Name}' " +
                 $"(BRH.R=({BrhRestR.X:F3},{BrhRestR.Y:F3},{BrhRestR.Z:F3},{BrhRestR.W:F3}))");
             return true;

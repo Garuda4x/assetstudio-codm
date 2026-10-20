@@ -206,7 +206,7 @@ namespace AssetStudio
                 ? BuildStreamedPoseNearTime(idleRef, 0f)
                 : new Dictionary<(uint path, uint attr), float[]>();
             if (idleRef != null && idle.Count == 0)
-                Logger.Warning($"[AnimClip] CODM bake: no pose from '{idleRef.m_Name}', using const-prefix only");
+                CodmDiagnostics.Warn($"[AnimClip] CODM bake: no pose from '{idleRef.m_Name}', using const-prefix only");
 
             int frames = dense.m_FrameCount;
             int ch = (int)dense.m_CurveCount;
@@ -655,7 +655,7 @@ namespace AssetStudio
                 }
             }
 
-            Logger.Warning(
+            CodmDiagnostics.Warn(
                 $"[AnimClip] CODM bake mode={Mode} on '{target.m_Name}': " +
                 $"ref='{(idleRef != null ? idleRef.m_Name : "(none)")}', " +
                 $"idleKeys={idle.Count}, fromRef={matched}, fromConstPrefix={fromConst}, fromHierWeapon={fromHier}, deltaOnly={deltaOnly}, " +

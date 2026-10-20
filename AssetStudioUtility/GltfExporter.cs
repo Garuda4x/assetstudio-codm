@@ -402,9 +402,9 @@ namespace AssetStudio
                         skinJointNodes.Add(skin.Skeleton);
 
                     if (forceArmature)
-                        Logger.Info($"[glTF] Forced armature skin for unskinned mesh: {jointBindings.Count} joints");
+                        CodmDiagnostics.Log($"[glTF] Forced armature skin for unskinned mesh: {jointBindings.Count} joints");
                     else
-                        Logger.Info($"[glTF] Skin joints: {importedMesh.BoneList.Count} weighted + " +
+                        CodmDiagnostics.Log($"[glTF] Skin joints: {importedMesh.BoneList.Count} weighted + " +
                             $"{jointBindings.Count - importedMesh.BoneList.Count} animated/hierarchy extras");
                 }
             }
@@ -415,7 +415,7 @@ namespace AssetStudio
             model.MergeBuffers();
             model.SaveGLB(path);
 
-            Logger.Info($"[glTF] Exported to {Path.GetFileName(path)}: " +
+            CodmDiagnostics.Log($"[glTF] Exported to {Path.GetFileName(path)}: " +
                 $"{imported.MeshList.Count} meshes, " +
                 $"{imported.MaterialList.Count} materials, " +
                 $"{totalBoneCount} bones, " +
@@ -500,7 +500,7 @@ namespace AssetStudio
             }
 
             if (skippedNonJoint > 0)
-                Logger.Info($"[glTF] Skipped {skippedNonJoint} track(s) on non-skin nodes (avoids duplicate Blender Actions)");
+                CodmDiagnostics.Log($"[glTF] Skipped {skippedNonJoint} track(s) on non-skin nodes (avoids duplicate Blender Actions)");
 
             return written;
         }

@@ -149,7 +149,7 @@ namespace AssetStudio
             if (dense.m_SampleArray != null && dense.m_SampleArray.Length == raw.Length)
                 Array.Copy(raw, dense.m_SampleArray, raw.Length);
 
-            Logger.Info($"[AnimClip] Bone01.P decode '{mode}' scale={scale:G4} on '{clip.m_Name}'");
+            CodmDiagnostics.Log($"[AnimClip] Bone01.P decode '{mode}' scale={scale:G4} on '{clip.m_Name}'");
             return true;
         }
 

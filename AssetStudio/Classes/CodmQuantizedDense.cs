@@ -85,12 +85,12 @@ namespace AssetStudio
                 if (payloadOff > 0)
                 {
                     int pref = Math.Min(payloadOff, 64);
-                    Logger.Warning($"[AnimClip] CODM blob prefix 0x0..0x{payloadOff:X} (first {pref}B): {Hex(region, 0, pref)}");
+                    CodmDiagnostics.Warn($"[AnimClip] CODM blob prefix 0x0..0x{payloadOff:X} (first {pref}B): {Hex(region, 0, pref)}");
                 }
                 if (dense.m_CodmTrailer != null)
                 {
                     int show = Math.Min(dense.m_CodmTrailer.Length, 64);
-                    Logger.Warning($"[AnimClip] CODM blob trailer 0x{endOff:X}..0x{region.Length:X} ({dense.m_CodmTrailer.Length}B, first {show}B): {Hex(dense.m_CodmTrailer, 0, show)}");
+                    CodmDiagnostics.Warn($"[AnimClip] CODM blob trailer 0x{endOff:X}..0x{region.Length:X} ({dense.m_CodmTrailer.Length}B, first {show}B): {Hex(dense.m_CodmTrailer, 0, show)}");
                 }
             }
 
@@ -103,7 +103,7 @@ namespace AssetStudio
             // Prefer header channel count when it matches (the Dense-style "extra" field).
             if (headerChannels > 0 && headerChannels != (uint)totalChannels)
             {
-                Logger.Info(
+                CodmDiagnostics.Log(
                     $"[AnimClip] CODM quant dense: headerChannels={headerChannels} blockSum={totalChannels}; using blockSum");
             }
 
@@ -168,7 +168,7 @@ namespace AssetStudio
                     sb.Append(blocks[i].Max.ToString("G4"));
                     sb.Append(']');
                 }
-                Logger.Warning($"[AnimClip] CODM quant blocks: {blocks.Count} ({sb}) sum={totalChannels}");
+                CodmDiagnostics.Warn($"[AnimClip] CODM quant blocks: {blocks.Count} ({sb}) sum={totalChannels}");
             }
 
             int streamedOffset;
@@ -179,13 +179,13 @@ namespace AssetStudio
                 out streamedOffset, out var scoreNote))
             {
                 placeNote = $"best({scoreNote},ideal={ideal})";
-                Logger.Warning(
+                CodmDiagnostics.Warn(
                     $"[AnimClip] CODM quant dense window chosen: idealOffset={ideal} → {streamedOffset}, " +
                     $"dense={totalChannels}, const={constLen}, bindDims={bindDims}, {scoreNote}");
             }
             else
             {
-                Logger.Warning(
+                CodmDiagnostics.Warn(
                     $"[AnimClip] CODM quant dense skipped (no binding window of width {totalChannels}): " +
                     $"idealOffset={ideal}, const={constLen}, bindDims={bindDims}");
                 return false;
@@ -205,7 +205,7 @@ namespace AssetStudio
             if (muscle.m_StopTime <= 0f && dense.m_SampleRate > 0f)
                 muscle.m_StopTime = frames / dense.m_SampleRate;
 
-            Logger.Warning(
+            CodmDiagnostics.Warn(
                 $"[AnimClip] CODM quant dense decoded ({placeNote}): frames={frames}, denseCurves={totalChannels}, " +
                 $"streamedOffset={streamedOffset}, constant={constLen}, " +
                 $"blocks={blocks.Count}, payload=0x{payloadOff:X}-0x{endOff:X}");
@@ -259,7 +259,7 @@ namespace AssetStudio
             if (streamed != null)
                 streamed.curveCount = (uint)streamedOffset;
 
-            Logger.Warning(
+            CodmDiagnostics.Warn(
                 $"[AnimClip] CODM dense rewindow '{clip.m_Name}': {prev} → {streamedOffset} ({scoreNote})");
             return streamedOffset != prev;
         }
@@ -820,7 +820,7 @@ namespace AssetStudio
             if (dense.m_SampleArray != null && dense.m_SampleArray.Length == raw.Length)
                 Array.Copy(raw, dense.m_SampleArray, raw.Length);
 
-            Logger.Warning($"[AnimClip] CODM [INVENTED] reinterpreted leading 3ch block as IEEE half on '{clip.m_Name}'");
+            CodmDiagnostics.Warn($"[AnimClip] CODM [INVENTED] reinterpreted leading 3ch block as IEEE half on '{clip.m_Name}'");
             return true;
         }
 
@@ -870,7 +870,7 @@ namespace AssetStudio
             if (dense.m_SampleArray != null && dense.m_SampleArray.Length == raw.Length)
                 Array.Copy(raw, dense.m_SampleArray, raw.Length);
             dense.m_Codm3chSpanFactor = desiredFactor;
-            Logger.Info(
+            CodmDiagnostics.Log(
                 $"[AnimClip] CODM 3ch span factor {cur:G3} → {desiredFactor:G3} on '{clip.m_Name}'");
             return true;
         }

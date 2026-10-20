@@ -172,7 +172,7 @@ namespace AssetStudio
                     bonePathHash[crc.GetDigest()] = path;
                 }
 
-                Logger.Info($"[MeshDirect] Root='{RootFrame.Name}', SkeletonPaths={skeletonPaths.Count}, RootFrame.Children={RootFrame.Count}");
+                CodmDiagnostics.Log($"[MeshDirect] Root='{RootFrame.Name}', SkeletonPaths={skeletonPaths.Count}, RootFrame.Children={RootFrame.Count}");
             }
             else
             {
@@ -185,7 +185,7 @@ namespace AssetStudio
             if (m_Animator.m_Avatar.TryGet(out var m_Avatar))
                 avatar = m_Avatar;
 
-            Logger.Info($"[SkinDebug] InitWithAnimator: Avatar = {(avatar != null ? avatar.m_Name : "NULL")}, HasTransformHierarchy = {m_Animator.m_HasTransformHierarchy}");
+            CodmDiagnostics.Log($"[SkinDebug] InitWithAnimator: Avatar = {(avatar != null ? avatar.m_Name : "NULL")}, HasTransformHierarchy = {m_Animator.m_HasTransformHierarchy}");
 
             m_Animator.m_GameObject.TryGet(out var m_GameObject);
             InitWithGameObject(m_GameObject, m_Animator.m_HasTransformHierarchy);
@@ -273,7 +273,7 @@ namespace AssetStudio
             {
                 bone02 = CreateFrame("Bone02", Vector3.Zero, new Quaternion(0, 0, 0, 1), Vector3.One);
                 bone01.AddChild(bone02);
-                Logger.Info($"[AnimExport] injected anim-only Bone02 under '{bone01.Path}' (CODM clip binding 0x4714F6A0)");
+                CodmDiagnostics.Log($"[AnimExport] injected anim-only Bone02 under '{bone01.Path}' (CODM clip binding 0x4714F6A0)");
             }
 
             // Register all path-hash suffixes like CreateBonePathHash
@@ -441,15 +441,15 @@ namespace AssetStudio
             }
 
             // === Diagnostic logging ===
-            Logger.Info($"[SkinDebug] === Processing mesh: {mesh.m_Name} ===");
-            Logger.Info($"[SkinDebug]   Unity version: {string.Join(".", meshR.reader.version)} (raw: {meshR.reader.assetsFile.unityVersion})");
-            Logger.Info($"[SkinDebug]   Renderer type: {meshR.GetType().Name}");
-            Logger.Info($"[SkinDebug]   m_VertexCount: {mesh.m_VertexCount}");
-            Logger.Info($"[SkinDebug]   m_Skin: {(mesh.m_Skin != null ? $"{mesh.m_Skin.Length} entries" : "NULL")}");
-            Logger.Info($"[SkinDebug]   m_BindPose: {(mesh.m_BindPose != null ? $"{mesh.m_BindPose.Length} entries" : "NULL")}");
-            Logger.Info($"[SkinDebug]   m_BoneNameHashes: {(mesh.m_BoneNameHashes != null ? $"{mesh.m_BoneNameHashes.Length} entries" : "NULL")}");
-            Logger.Info($"[SkinDebug]   Avatar: {(avatar != null ? $"{avatar.m_Name} (TOS: {avatar.m_TOS.Length})" : "NULL")}");
-            Logger.Info($"[SkinDebug]   bonePathHash count: {bonePathHash.Count}");
+            CodmDiagnostics.Log($"[SkinDebug] === Processing mesh: {mesh.m_Name} ===");
+            CodmDiagnostics.Log($"[SkinDebug]   Unity version: {string.Join(".", meshR.reader.version)} (raw: {meshR.reader.assetsFile.unityVersion})");
+            CodmDiagnostics.Log($"[SkinDebug]   Renderer type: {meshR.GetType().Name}");
+            CodmDiagnostics.Log($"[SkinDebug]   m_VertexCount: {mesh.m_VertexCount}");
+            CodmDiagnostics.Log($"[SkinDebug]   m_Skin: {(mesh.m_Skin != null ? $"{mesh.m_Skin.Length} entries" : "NULL")}");
+            CodmDiagnostics.Log($"[SkinDebug]   m_BindPose: {(mesh.m_BindPose != null ? $"{mesh.m_BindPose.Length} entries" : "NULL")}");
+            CodmDiagnostics.Log($"[SkinDebug]   m_BoneNameHashes: {(mesh.m_BoneNameHashes != null ? $"{mesh.m_BoneNameHashes.Length} entries" : "NULL")}");
+            CodmDiagnostics.Log($"[SkinDebug]   Avatar: {(avatar != null ? $"{avatar.m_Name} (TOS: {avatar.m_TOS.Length})" : "NULL")}");
+            CodmDiagnostics.Log($"[SkinDebug]   bonePathHash count: {bonePathHash.Count}");
             if (mesh.m_Skin != null && mesh.m_Skin.Length > 0)
             {
                 var nonZeroWeights = 0;
@@ -457,17 +457,17 @@ namespace AssetStudio
                 {
                     if (mesh.m_Skin[s].weight[0] > 0) nonZeroWeights++;
                 }
-                Logger.Info($"[SkinDebug]   Vertices with non-zero weight[0]: {nonZeroWeights}/{mesh.m_Skin.Length}");
+                CodmDiagnostics.Log($"[SkinDebug]   Vertices with non-zero weight[0]: {nonZeroWeights}/{mesh.m_Skin.Length}");
             }
             if (meshR is SkinnedMeshRenderer sMeshDbg)
             {
-                Logger.Info($"[SkinDebug]   m_Bones.Length: {sMeshDbg.m_Bones.Length}");
+                CodmDiagnostics.Log($"[SkinDebug]   m_Bones.Length: {sMeshDbg.m_Bones.Length}");
                 var resolvedCount = 0;
                 for (int b = 0; b < sMeshDbg.m_Bones.Length; b++)
                 {
                     if (sMeshDbg.m_Bones[b].TryGet(out _)) resolvedCount++;
                 }
-                Logger.Info($"[SkinDebug]   Resolvable bone PPtrs: {resolvedCount}/{sMeshDbg.m_Bones.Length}");
+                CodmDiagnostics.Log($"[SkinDebug]   Resolvable bone PPtrs: {resolvedCount}/{sMeshDbg.m_Bones.Length}");
             }
             // === End diagnostic logging ===
 
@@ -668,7 +668,7 @@ namespace AssetStudio
                     }
                 }
 
-                Logger.Info($"[SkinDebug]   Final boneType: {boneType}");
+                CodmDiagnostics.Log($"[SkinDebug]   Final boneType: {boneType}");
 
                 if (boneType == 1)
                 {
@@ -685,7 +685,7 @@ namespace AssetStudio
                         bone.Matrix = convert * mesh.m_BindPose[i] * convert;
                         iMesh.BoneList.Add(bone);
                     }
-                    Logger.Info($"[SkinDebug]   BoneList: {iMesh.BoneList.Count} bones, null paths: {iMesh.BoneList.Count(b => b.Path == null)}");
+                    CodmDiagnostics.Log($"[SkinDebug]   BoneList: {iMesh.BoneList.Count} bones, null paths: {iMesh.BoneList.Count(b => b.Path == null)}");
                 }
                 else if (boneType == 2)
                 {
@@ -791,7 +791,7 @@ namespace AssetStudio
         {
             var iMesh = new ImportedMesh();
             iMesh.Path = RootFrame.Path;
-            Logger.Info($"[MeshDirect] iMesh.Path='{iMesh.Path}', RootFrame.Name='{RootFrame.Name}', RootFrame.Path='{RootFrame.Path}', RootFrame.Children={RootFrame.Count}");
+            CodmDiagnostics.Log($"[MeshDirect] iMesh.Path='{iMesh.Path}', RootFrame.Name='{RootFrame.Name}', RootFrame.Path='{RootFrame.Path}', RootFrame.Children={RootFrame.Count}");
             iMesh.SubmeshList = new List<ImportedSubmesh>();
 
             iMesh.hasNormal = mesh.m_Normals?.Length > 0;
@@ -931,7 +931,7 @@ namespace AssetStudio
                     bone.Matrix = convert * mesh.m_BindPose[i] * convert;
                     iMesh.BoneList.Add(bone);
                 }
-                Logger.Info($"[MeshDirect] BoneList: {iMesh.BoneList.Count} bones, resolved: {iMesh.BoneList.Count(b => b.Path != null)}");
+                CodmDiagnostics.Log($"[MeshDirect] BoneList: {iMesh.BoneList.Count} bones, resolved: {iMesh.BoneList.Count(b => b.Path != null)}");
             }
 
             MeshList.Add(iMesh);
@@ -1152,7 +1152,7 @@ namespace AssetStudio
                 else
                 {
                     CodmDenseIdleRelative.PreferWriteDefaultsIdle = true;
-                    Logger.Info("[AnimExport] idle=auto: no Fire* in selection → WriteDefaults (prefab bind)");
+                    CodmDiagnostics.Log("[AnimExport] idle=auto: no Fire* in selection → WriteDefaults (prefab bind)");
                 }
             }
 
@@ -1187,7 +1187,7 @@ namespace AssetStudio
                     : (idleRef != null ? "Fire*" : "const-prefix");
                 if (CodmDenseIdleRelative.IdleSourceAuto)
                     idlePolicy = "auto→" + idlePolicy;
-                Logger.Warning(
+                CodmDiagnostics.Warn(
                     $"[AnimExport] CODM idle-relative bake: {baked} clip(s); " +
                     $"idle={idlePolicy}; ref={(idleRef != null ? idleRef.m_Name : "(none)")}; " +
                     $"WriteDefaults={CodmDenseIdleRelative.PreferWriteDefaultsIdle} " +
@@ -1360,7 +1360,7 @@ namespace AssetStudio
                         }
                         if (codmPrefixConst)
                         {
-                            Logger.Warning(
+                            CodmDiagnostics.Warn(
                                 $"[AnimExport] CODM prefix ConstantClip on '{animationClip.m_Name}' " +
                                 $"(const={m_ConstantClip.data.Length}, stream={streamCount}, dense={denseCount}, " +
                                 $"skipDense=[{denseStart},{denseEnd}))");
@@ -1414,7 +1414,7 @@ namespace AssetStudio
             }
             else
             {
-                Logger.Info(msg);
+                CodmDiagnostics.Log(msg);
             }
         }
 
@@ -1643,7 +1643,7 @@ namespace AssetStudio
             CodmDenseIdleRelative.HierarchyWeaponIdle = dest;
             if (dest.Count > 0)
             {
-                Logger.Info($"[AnimExport] hierarchy idle keys={dest.Count} " +
+                CodmDiagnostics.Log($"[AnimExport] hierarchy idle keys={dest.Count} " +
                             $"(writeDefaults={wantAll}, weaponLeaves={wantWeapon}/{weaponN}, " +
                             $"arms={wantArm}/{armN}, other={otherN})");
             }

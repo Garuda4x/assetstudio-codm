@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System;
 using System.Runtime.CompilerServices;
 using Texture2DDecoder;
@@ -33,7 +33,7 @@ namespace AssetStudio
                 Logger.Warning($"[Tex2DDecode] Skipping: dataSize={reader.Size}, width={m_Width}, height={m_Height}, format={m_TextureFormat}");
                 return false;
             }
-            Logger.Info($"[Tex2DDecode] Decoding: {m_Width}x{m_Height}, format={m_TextureFormat}, dataSize={reader.Size}, expectedOutput={outPutSize}");
+            CodmDiagnostics.Log($"[Tex2DDecode] Decoding: {m_Width}x{m_Height}, format={m_TextureFormat}, dataSize={reader.Size}, expectedOutput={outPutSize}");
             var flag = false;
             byte[] buff;
             try

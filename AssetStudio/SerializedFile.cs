@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -225,7 +225,7 @@ namespace AssetStudio
                 var sanitized = Regex.Replace(stringVersion, @"[\x00-\x1F\x7F]", "");
                 if (sanitized != stringVersion)
                 {
-                    Logger.Warning($"Version string contained control characters, sanitized: '{sanitized}' (original had {stringVersion.Length} chars)");
+                    CodmDiagnostics.Warn($"Version string contained control characters, sanitized: '{sanitized}' (original had {stringVersion.Length} chars)");
                 }
                 unityVersion = sanitized;
                 var buildSplit = Regex.Replace(sanitized, @"\d", "").Split(new[] { "." }, StringSplitOptions.RemoveEmptyEntries);
@@ -236,7 +236,7 @@ namespace AssetStudio
                 // If we get more, the version string is likely obfuscated/fake
                 if (version.Length > 4)
                 {
-                    Logger.Warning($"Parsed version has {version.Length} parts ({string.Join(".", version)}), likely obfuscated. Truncating to 4 parts.");
+                    CodmDiagnostics.Warn($"Parsed version has {version.Length} parts ({string.Join(".", version)}), likely obfuscated. Truncating to 4 parts.");
                     version = version.Take(4).ToArray();
                 }
             }

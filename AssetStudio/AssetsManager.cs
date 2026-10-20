@@ -192,10 +192,10 @@ namespace AssetStudio
             try
             {
                 var bundleFile = new BundleFile(reader);
-                Logger.Info($"[Bundle] '{Path.GetFileName(reader.FullPath)}' contains {bundleFile.fileList.Length} files:");
+                CodmDiagnostics.Log($"[Bundle] '{Path.GetFileName(reader.FullPath)}' contains {bundleFile.fileList.Length} files:");
                 foreach (var file in bundleFile.fileList)
                 {
-                    Logger.Info($"[Bundle]   '{file.fileName}' size={file.stream.Length}");
+                    CodmDiagnostics.Log($"[Bundle]   '{file.fileName}' size={file.stream.Length}");
                 }
                 foreach (var file in bundleFile.fileList)
                 {
@@ -207,7 +207,7 @@ namespace AssetStudio
                     }
                     else
                     {
-                        Logger.Info($"[Bundle]   Registered resource: '{file.fileName}' (type={subReader.FileType})");
+                        CodmDiagnostics.Log($"[Bundle]   Registered resource: '{file.fileName}' (type={subReader.FileType})");
                         resourceFileReaders[file.fileName] = subReader; //TODO
                     }
                 }
@@ -406,7 +406,7 @@ namespace AssetStudio
             var unread = assetsFileList.Where(x => x.Objects.Count == 0).ToList();
             foreach (var assetsFile in unread)
             {
-                Logger.Warning($"[VersionDebug] File: {assetsFile.fileName}, Unity version: {assetsFile.unityVersion}, Parsed: [{string.Join(".", assetsFile.version)}], Format: {assetsFile.header.m_Version}, IsStripped: {assetsFile.IsVersionStripped}");
+                CodmDiagnostics.Warn($"[VersionDebug] File: {assetsFile.fileName}, Unity version: {assetsFile.unityVersion}, Parsed: [{string.Join(".", assetsFile.version)}], Format: {assetsFile.header.m_Version}, IsStripped: {assetsFile.IsVersionStripped}");
             }
 
             var progressCount = unread.Sum(x => x.m_Objects.Count);
@@ -508,7 +508,7 @@ namespace AssetStudio
                                 obj = new Shader(objectReader);
                                 break;
                             case ClassIDType.SkinnedMeshRenderer:
-                                // Dump raw bytes for debugging
+                                if (CodmDiagnostics.Enabled)
                                 {
                                     objectReader.Reset();
                                     var dumpSize = Math.Min((int)objectReader.byteSize, 256);

@@ -1194,7 +1194,7 @@ namespace AssetStudio
                             reader.Position = bySizePos;
                             if (TryPeekBindingList(reader, out _))
                             {
-                                Logger.Info($"[AnimClip] CODM binding sync via muscleClipSize at 0x{bySizePos - reader.byteStart:X}");
+                                CodmDiagnostics.Log($"[AnimClip] CODM binding sync via muscleClipSize at 0x{bySizePos - reader.byteStart:X}");
                                 synced = true;
                             }
                         }
@@ -1254,7 +1254,7 @@ namespace AssetStudio
             int numEvents = reader.ReadInt32();
             if (numEvents < 0 || numEvents > 4096 || numEvents > reader.Remaining / 8)
             {
-                Logger.Warning($"[AnimClip] Absurd event count {numEvents} (PathID={reader.m_PathID}); treating as no events");
+                CodmDiagnostics.Warn($"[AnimClip] Absurd event count {numEvents} (PathID={reader.m_PathID}); treating as no events");
                 m_Events = Array.Empty<AnimationEvent>();
             }
             else
@@ -1318,7 +1318,7 @@ namespace AssetStudio
             }
             catch (Exception e)
             {
-                Logger.Warning($"[AnimClip] CODM quant dense decode failed (PathID={reader.m_PathID}): {e.Message}");
+                CodmDiagnostics.Warn($"[AnimClip] CODM quant dense decode failed (PathID={reader.m_PathID}): {e.Message}");
             }
             finally
             {
@@ -1419,7 +1419,7 @@ namespace AssetStudio
                         if (IsPlausibleGenericBinding(typeId, attr))
                         {
                             reader.Position = pos;
-                            Logger.Info($"[AnimClip] CODM binding sync at 0x{pos - reader.byteStart:X} (count={count}, typeID={typeId}, attr={attr})");
+                            CodmDiagnostics.Log($"[AnimClip] CODM binding sync at 0x{pos - reader.byteStart:X} (count={count}, typeID={typeId}, attr={attr})");
                             return true;
                         }
                     }
@@ -1450,7 +1450,7 @@ namespace AssetStudio
             if (allowEmpty && emptyTailPos.HasValue)
             {
                 reader.Position = emptyTailPos.Value;
-                Logger.Warning(
+                CodmDiagnostics.Warn(
                     $"[AnimClip] CODM binding sync at 0x{emptyTailPos.Value - reader.byteStart:X} " +
                     "(empty bindings at tail — muscle ValueArray may still hold curve maps)");
                 return true;
@@ -1508,7 +1508,7 @@ namespace AssetStudio
                             if (name != null && name.Length < 256)
                             {
                                 reader.Position = pos;
-                                Logger.Info($"[AnimClip] CODM event sync at 0x{pos - reader.byteStart:X} (count={count})");
+                                CodmDiagnostics.Log($"[AnimClip] CODM event sync at 0x{pos - reader.byteStart:X} (count={count})");
                                 return;
                             }
                         }
