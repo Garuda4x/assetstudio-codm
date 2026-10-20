@@ -13,10 +13,13 @@ walking up from the exe directory, so the copy at the repository root is used). 
 | `codm search <text> [--max n]` | paks whose decoded name or raw file name contains the text |
 | `codm weapons [filter] [--kind main\|melee\|throw\|assi\|special] [--base] [--no-banks]` | weapon table: paks, base, skins, fx, own banks, class banks |
 | `codm weapon <id\|folder\|name>` | one weapon: paks, base chain paks, components, effects, sound banks, class banks |
-| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps` |
+| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--flat-sounds] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps`; sounds grouped per event unless `--flat-sounds` |
 | `codm anims <weapon> [--no-deps]` | per Animator prefab: its controller, how many clips resolve and in which bundle the missing ones live |
 | `codm cabindex [--rebuild]` | build or refresh the CAB -> pak index (`cache/cab-index.json`) |
 | `codm deps <pak...>` | external bundles a pak references and which paks provide them |
+| `codm wwnames [--rebuild]` | recover Wwise event names for every weapon bank and record which weapon each bank belongs to |
+| `codm components [weapon] [--rebuild]` | index the attachment bundles by their asset paths and link them to weapons; with a weapon, list its attachments and the paths that matched |
+| `codm mbscan <weapon\|pak> [--deps]` | scan MonoBehaviour blobs for object references and Wwise ids (research aid) |
 | `codm classes [--unknown]` | sound class of every weapon family (map, seed, kind or unknown) |
 | `codm class <weapon> [<class>\|-]` | show or set the family's sound class in `weapon-classes.json` |
 | `codm banks [filter]` | distinct bank names with copy count, embedded media count, size, languages |
@@ -66,6 +69,6 @@ sounds (89):
   manifest.json          paks loaded, models, textures, banks, warnings
   models/<prefab>/       <prefab>.cast + anims/*.cast   (one per Animator; "<name> (module)" when two bundles ship the same prefab)
   textures/*.png
-  sounds/<bank>/*.wem    (+ .wav when vgmstream is configured)
-  fx/<effect pak>/       textures/ + objects.txt        (with --fx)
+  sounds/<bank>/<event>/*.wem   (+ .wav when vgmstream is configured; events.txt maps events to wems)
+  fx/<effect pak>/       textures/ + objects.txt        (with --fx; textures the effect's materials reference)
 ```

@@ -16,6 +16,8 @@ namespace AssetStudio.Codm
         public bool IncludeBaseWeapon { get; set; } = true;
         public bool IncludeComponents { get; set; } = false;
         public bool ConvertWem { get; set; } = true;
+        /// <summary>Group wems by the event that plays them (folders named after the resolved event name).</summary>
+        public bool SoundsByEvent { get; set; } = true;
         /// <summary>Load the bundles the weapon paks reference (shared animations, controllers, avatars).</summary>
         public bool ResolveDependencies { get; set; } = true;
         public int MaxDependencyPaks { get; set; } = 60;
@@ -66,7 +68,7 @@ namespace AssetStudio.Codm
             if (o.IncludeBaseWeapon)
                 all.AddRange(w.BaseChainPaks());
             if (o.IncludeComponents)
-                all.AddRange(w.Components);
+                all.AddRange(w.AllComponents());
             return PakIndex.OrderForLoading(all, cfg);
         }
 
@@ -305,6 +307,39 @@ namespace AssetStudio.Codm
             return false;
         }
 
+        public void ExportTextureSet(IEnumerable<Texture2D> textures, string dir, WeaponExportReport report, Action<string> log)
+        {
+            var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var count = 0;
+            foreach (var tex in textures)
+            {
+                var name = UniqueName(usedNames, tex.m_Name);
+                try
+                {
+                    var image = tex.ConvertToImage(true);
+                    if (image == null)
+                    {
+                        report.Warnings.Add($"texture {name}: could not decode ({tex.m_TextureFormat})");
+                        continue;
+                    }
+                    Directory.CreateDirectory(dir);
+                    var path = Path.Combine(dir, name + "." + cfg.ImageFormat.ToString().ToLowerInvariant());
+                    using (image)
+                    using (var fs = File.Create(path))
+                    {
+                        image.WriteToStream(fs, cfg.ImageFormat);
+                    }
+                    report.Textures.Add(path);
+                    count++;
+                }
+                catch (Exception ex)
+                {
+                    report.Warnings.Add($"texture {name}: {ex.Message}");
+                }
+            }
+            log($"[Export] {count} texture(s)");
+        }
+
         public void ExportTextures(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null)
         {
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -359,7 +394,7 @@ namespace AssetStudio.Codm
                 if (bank == null)
                     continue;
                 var bankDir = Path.Combine(dir, bank.Name);
-                var r = WemTools.ExportBank(wwise, bank, bankDir, cfg.VgmstreamPath, o.ConvertWem, log);
+                var r = WemTools.ExportBank(wwise, bank, bankDir, cfg.VgmstreamPath, o.ConvertWem, log, o.SoundsByEvent);
                 report.Banks.Add(bank.Path);
                 report.WemsExtracted += r.Extracted;
                 report.WemsConverted += r.Converted;
@@ -368,9 +403,14 @@ namespace AssetStudio.Codm
             }
         }
 
-        /// <summary>FX bundles cannot be rebuilt as particle systems; export their textures and list their objects.</summary>
+        /// <summary>
+        /// FX bundles cannot be rebuilt as particle systems. Their textures live in shared "#tex" bundles,
+        /// so the bundle's dependencies are loaded and the textures its materials reference are exported,
+        /// together with a listing of its particle systems, materials and meshes.
+        /// </summary>
         public void ExportEffects(WeaponEntry w, string dir, WeaponExportReport report, Action<string> log)
         {
+            var fxSkip = new[] { "_codm_shader", "scenes/", "_s_", "textures/ui", "cod_prefabs/ngui", "cod_models/avatar" };
             foreach (var fx in PakIndex.OrderForLoading(w.Effects, cfg))
             {
                 var fxDir = Path.Combine(dir, SafeName(fx.Name.LastSegment));
@@ -378,20 +418,85 @@ namespace AssetStudio.Codm
                 try
                 {
                     am.LoadFiles(fx.FullPath);
-                    var sub = new WeaponExportReport();
-                    ExportTextures(am, Path.Combine(fxDir, "textures"), sub, log);
-                    report.Textures.AddRange(sub.Textures);
-                    report.Warnings.AddRange(sub.Warnings);
+                    var cabs = cabIndexProvider?.Invoke();
+                    if (cabs != null)
+                        DependencyResolver.Resolve(am, cabs, cfg, log, maxRounds: 1, maxPaks: 80, skipPrefixes: fxSkip);
+                    var own = am.assetsFileList.Where(f => string.Equals(f.originalPath ?? f.fullName, fx.FullPath, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                    // materials referenced by the effect's renderers (they usually live in shared bundles),
+                    // then the textures those materials reference
+                    var textures = new List<Texture2D>();
                     var listing = new List<string>();
-                    foreach (var file in am.assetsFileList)
+                    var materials = new List<Material>();
+                    foreach (var file in own)
+                    {
                         foreach (var obj in file.Objects)
-                            if (obj is NamedObject no && !(obj is Texture2D))
-                                listing.Add($"{obj.type}\t{no.m_Name}");
+                        {
+                            if (obj is Material m0 && !materials.Contains(m0))
+                                materials.Add(m0);
+                            if (obj is Renderer r && r.m_Materials != null)
+                                foreach (var mp in r.m_Materials)
+                                    if (mp.TryGet(out var m1) && !materials.Contains(m1))
+                                        materials.Add(m1);
+                        }
+                    }
+                    // the materials' textures sit one bundle further: load exactly those bundles
+                    if (cabs != null)
+                    {
+                        var need = new List<string>();
+                        foreach (var mat in materials)
+                            foreach (var kv in mat.m_SavedProperties.m_TexEnvs)
+                            {
+                                var ptr = kv.Value.m_Texture;
+                                if (ptr.m_PathID == 0 || ptr.m_FileID <= 0 || ptr.TryGet(out _)) continue;
+                                if (ptr.m_FileID - 1 < mat.assetsFile.m_Externals.Count)
+                                    need.Add(mat.assetsFile.m_Externals[ptr.m_FileID - 1].fileName);
+                            }
+                        DependencyResolver.LoadCabs(am, cabs, cfg, need, log);
+                    }
+                    foreach (var file in own)
+                    {
+                        foreach (var obj in file.Objects)
+                        {
+                            if (obj is Material) continue;
+                            if (obj is Texture2D tex2 && !textures.Contains(tex2))
+                                textures.Add(tex2);
                             else if (obj is GameObject go)
                                 listing.Add($"GameObject\t{go.m_Name}");
+                            else if (obj is NamedObject no && !(obj is Texture2D))
+                                listing.Add($"{obj.type}\t{no.m_Name}");
+                        }
+                    }
+                    foreach (var mat in materials)
+                    {
+                        {
+                            {
+                                var texNames = new List<string>();
+                                foreach (var kv in mat.m_SavedProperties.m_TexEnvs)
+                                {
+                                    if (kv.Value.m_Texture.TryGet(out var tex) && tex is Texture2D t2)
+                                    {
+                                        if (!textures.Contains(t2)) textures.Add(t2);
+                                        texNames.Add($"{kv.Key}={t2.m_Name}");
+                                    }
+                                    else if (kv.Value.m_Texture.m_PathID != 0)
+                                    {
+                                        texNames.Add($"{kv.Key}=(unresolved)");
+                                    }
+                                }
+                                var shaderName = mat.m_Shader.TryGet(out var sh) ? sh.m_Name : "?";
+                                listing.Add($"Material\t{mat.m_Name}\tshader={shaderName}\t{string.Join(" ", texNames)}");
+                            }
+                        }
+                    }
+                    var sub = new WeaponExportReport();
+                    ExportTextureSet(textures, Path.Combine(fxDir, "textures"), sub, log);
+                    report.Textures.AddRange(sub.Textures);
+                    report.Warnings.AddRange(sub.Warnings);
                     Directory.CreateDirectory(fxDir);
-                    File.WriteAllLines(Path.Combine(fxDir, "objects.txt"), new[] { "# " + fx.Name.Decoded, "# " + fx.FullPath }.Concat(listing.Distinct().OrderBy(x => x)));
+                    File.WriteAllLines(Path.Combine(fxDir, "objects.txt"), new[] { "# " + fx.Name.Decoded, "# " + fx.FullPath, $"# {textures.Count} texture(s) referenced by materials" }.Concat(listing.Distinct().OrderBy(x => x)));
                     report.Effects.Add(fxDir);
+                    log($"[Export] fx {fx.Name.LastSegment}: {textures.Count} texture(s), {listing.Count(l => l.StartsWith("Material"))} material(s)");
                 }
                 catch (Exception ex)
                 {

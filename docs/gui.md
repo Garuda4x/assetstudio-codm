@@ -21,7 +21,9 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
   skins, nested when a skin is itself the base of further skins. The filter matches id, name or folder.
   Ids are the real game ids (`2537` is the Locus railgun), the same numbers the sound banks use.
 - Right: every file the catalog links to the selected weapon, grouped: weapon paks, one group per base
-  in the chain, components (sights), effects, own sound banks, class banks. Weapon and base paks are
+  in the chain, components (sights by name; magazines, barrels, stocks, grips once the attachment index
+  has been built in the background, each row showing the matching asset folder and the full paths as a
+  tooltip), effects, own sound banks (found by their event names), class banks. Weapon and base paks are
   checked by default.
 - **Load checked (replace)** / **Add checked**: push the checked paks into the main window (all module
   copies of a path are loaded; duplicate CABs are skipped). With **Resolve dependencies** ticked the
@@ -38,8 +40,9 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 **All paks tab**: search any decoded path (`cod_effects/particles`, `avatar/`, `ui_icon`, a skin name).
 Load or add checked results, or double-click one.
 
-**Sound banks tab**: filter the 2 187 bank names, see a bank's objects, events, where each sound's wem
-lives, and extract all its wems to `ExportRoot/sounds/<bank>/`.
+**Sound banks tab**: filter the 2 187 bank names, see a bank's events (with recovered names where
+known and the number of wems each one reaches), where each sound's wem lives, and extract all its wems
+to `ExportRoot/sounds/<bank>/<event>/`.
 
 ## Export Options (Options > Export options)
 

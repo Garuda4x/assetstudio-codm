@@ -35,6 +35,8 @@ namespace AssetStudio.Codm
         public List<WeaponEntry> Skins { get; } = new List<WeaponEntry>();
         /// <summary>Component paks matched by name (sights are per base weapon).</summary>
         public List<PakEntry> Components { get; } = new List<PakEntry>();
+        /// <summary>Per component pak: the container paths that tie it to this weapon.</summary>
+        public Dictionary<PakEntry, List<string>> ComponentEvidence { get; } = new Dictionary<PakEntry, List<string>>();
         /// <summary>cod_effects paks whose name mentions this weapon or its base.</summary>
         public List<PakEntry> Effects { get; } = new List<PakEntry>();
         /// <summary>Wwise banks: numeric banks matching the id plus named banks mentioning the weapon.</summary>
@@ -72,6 +74,22 @@ namespace AssetStudio.Codm
         public List<PakEntry> BaseChainPaks()
         {
             return Ancestors().SelectMany(a => a.Paks).ToList();
+        }
+
+        /// <summary>Own components plus those of the base chain (attachments are made for the base weapon).</summary>
+        public List<PakEntry> AllComponents()
+        {
+            return Components.Concat(Ancestors().SelectMany(a => a.Components)).Distinct().ToList();
+        }
+
+        /// <summary>Container paths that tie a component pak to this weapon or one of its bases.</summary>
+        public List<string> ComponentPaths(PakEntry pak)
+        {
+            var list = new List<string>();
+            foreach (var w in new[] { this }.Concat(Ancestors()))
+                if (w.ComponentEvidence.TryGetValue(pak, out var ev))
+                    foreach (var p in ev) if (!list.Contains(p)) list.Add(p);
+            return list;
         }
 
         public override string ToString() => Folder;
@@ -231,6 +249,70 @@ namespace AssetStudio.Codm
             }
         }
 
+        /// <summary>
+        /// Attachments by their container paths: the pak name is only a version bucket, but the asset
+        /// folders inside are named after the weapon or skin (component/mag/13.0/mag01_svdpurplesoul/...).
+        /// </summary>
+        public int LinkComponentsByContainers(ContainerIndex containers)
+        {
+            var byName = new Dictionary<string, List<WeaponEntry>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var w in Weapons)
+            {
+                foreach (var key in new[] { w.Name, NormalizeName(w.Name) }.Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (key.Length < 3) continue;
+                    if (!byName.TryGetValue(key, out var list)) byName[key] = list = new List<WeaponEntry>();
+                    list.Add(w);
+                }
+            }
+            var linked = 0;
+            foreach (var pak in ComponentPaks)
+            {
+                var matched = new Dictionary<WeaponEntry, List<string>>();
+                void Hit(List<WeaponEntry> ws, string path)
+                {
+                    foreach (var w in ws)
+                    {
+                        if (!matched.TryGetValue(w, out var ev)) matched[w] = ev = new List<string>();
+                        if (!ev.Contains(path)) ev.Add(path);
+                    }
+                }
+                foreach (var path in containers.ContainersOf(pak.FullPath))
+                {
+                    var segs = path.ToLowerInvariant().Split('/');
+                    var start = Array.FindIndex(segs, x => x == "component");
+                    // only the asset folder right after component/<type>/<bucket>/ names the weapon
+                    var i = start + 3;
+                    if (start < 0 || i >= segs.Length) continue;
+                    var seg = segs[i];
+                    var dot = seg.IndexOf('.');
+                    if (dot > 0) seg = seg.Substring(0, dot);
+                    if (byName.TryGetValue(seg, out var exact)) Hit(exact, path);
+                    var toks = seg.Split('_');
+                    for (var t = 1; t < toks.Length; t++)
+                    {
+                        var joinedUnderscore = string.Join("_", toks, t, toks.Length - t);
+                        var joined = string.Concat(toks.Skip(t));
+                        if (byName.TryGetValue(joinedUnderscore, out var l1)) Hit(l1, path);
+                        if (byName.TryGetValue(joined, out var l2)) Hit(l2, path);
+                        // skin folders often carry a role suffix: mag01_svdpurplesoul_ui
+                        for (var e = toks.Length - 1; e > t; e--)
+                        {
+                            var mid = string.Concat(toks.Skip(t).Take(e - t));
+                            if (mid.Length >= 4 && byName.TryGetValue(mid, out var l3)) Hit(l3, path);
+                        }
+                    }
+                }
+                foreach (var kv in matched)
+                {
+                    var w = kv.Key;
+                    if (!w.Components.Contains(pak)) { w.Components.Add(pak); linked++; }
+                    w.ComponentEvidence[pak] = kv.Value;
+                }
+            }
+            return linked;
+        }
+
         private void LinkComponents()
         {
             // sights are named sig9x_<baseweapon>; everything else is a version bucket shared by many weapons
@@ -265,11 +347,24 @@ namespace AssetStudio.Codm
 
         private void LinkBanks(WwiseIndex wwise)
         {
+            var hasTokens = wwise.BankTokens.Count > 0;
             foreach (var w in Weapons)
             {
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // 1. banks whose event names mention this weapon (play_wpn_locus_fire_1p): exact and unambiguous
+                if (hasTokens)
+                {
+                    foreach (var tok in new[] { w.Name, NormalizeName(w.Name) }.Distinct(StringComparer.OrdinalIgnoreCase))
+                        foreach (var b in wwise.BanksForToken(tok))
+                            if (seen.Add(b.Name)) w.Banks.Add(b);
+                }
+                // 2. numeric banks matching the id, unless the bank was identified as another weapon's by name
                 foreach (var b in wwise.BanksForNumericId(w.Id))
+                {
+                    if (hasTokens && wwise.BankTokens.TryGetValue(b.Name, out var toks) && toks.Count > 0 && !toks.Contains(w.Name) && !toks.Contains(NormalizeName(w.Name)))
+                        continue;
                     if (seen.Add(b.Name)) w.Banks.Add(b);
+                }
 
                 var names = NameTokens(w);
                 foreach (var b in wwise.Banks)

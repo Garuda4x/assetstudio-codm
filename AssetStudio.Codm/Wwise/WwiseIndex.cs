@@ -43,6 +43,10 @@ namespace AssetStudio.Codm.Wwise
         public Dictionary<uint, List<string>> LooseWems { get; } = new Dictionary<uint, List<string>>();
         public List<string> ScannedFolders { get; } = new List<string>();
         public int TotalBankFiles { get; private set; }
+        /// <summary>Resolved Wwise names (events, switches); null until <see cref="LoadNames"/>.</summary>
+        public WwiseNames Names { get; private set; }
+        /// <summary>Bank name -> weapon name tokens found in its event names (play_wpn_locus_fire_1p -> locus).</summary>
+        public Dictionary<string, HashSet<string>> BankTokens { get; } = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 
         private readonly string preferredLanguage;
 
@@ -155,6 +159,120 @@ namespace AssetStudio.Codm.Wwise
                 .OrderBy(b => b.Language == null ? 0 : (string.Equals(b.Language, preferredLanguage, StringComparison.OrdinalIgnoreCase) ? 1 : 2))
                 .ThenBy(b => b.HighQuality ? 1 : 0)
                 .First();
+        }
+
+        public sealed class HircRef
+        {
+            public byte Type { get; set; }
+            public string Bank { get; set; }
+            public int Copies { get; set; }
+        }
+
+        private Dictionary<uint, HircRef> hircObjects;
+
+        /// <summary>Every HIRC object id (events, actions, sounds, containers...) across all banks, first bank wins. Built on first use.</summary>
+        public Dictionary<uint, HircRef> HircObjects(Action<string> progress = null)
+        {
+            if (hircObjects != null)
+                return hircObjects;
+            var map = new Dictionary<uint, HircRef>();
+            var done = 0;
+            foreach (var info in Banks)
+            {
+                if (!info.HasHirc) continue;
+                WwiseBank bank;
+                try { bank = WwiseBank.Parse(info.Path); }
+                catch (Exception) { continue; }
+                foreach (var ev in bank.Events) AddRef(map, ev.Id, 4, info.Name);
+                foreach (var a in bank.Actions) AddRef(map, a.Id, 3, info.Name);
+                foreach (var snd in bank.Sounds) AddRef(map, snd.Id, 2, info.Name);
+                foreach (var kv in bank.ObjectIds) AddRef(map, kv.Key, kv.Value, info.Name);
+                done++;
+                if (done % 1000 == 0) progress?.Invoke($"Wwise objects: {done} banks");
+            }
+            progress?.Invoke($"Wwise objects: {map.Count} ids from {done} banks");
+            hircObjects = map;
+            return map;
+        }
+
+        private static void AddRef(Dictionary<uint, HircRef> map, uint id, byte type, string bank)
+        {
+            if (map.TryGetValue(id, out var r)) { r.Copies++; return; }
+            map[id] = new HircRef { Type = type, Bank = bank, Copies = 1 };
+        }
+
+        public string TokensCachePath(CodmConfig cfg) => cfg.ResolveLocalPath(Path.Combine("cache", "wwise-bank-tokens.json"));
+
+        /// <summary>Load the name cache and the bank-token cache; when the token cache is missing, build both by guessing.</summary>
+        public void LoadNames(CodmConfig cfg, IEnumerable<string> weaponTokens, Action<string> progress = null, bool rebuild = false)
+        {
+            Names = WwiseNames.Load(cfg);
+            var tokPath = TokensCachePath(cfg);
+            if (!rebuild && File.Exists(tokPath))
+            {
+                try
+                {
+                    var d = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, List<string>>>(File.ReadAllText(tokPath));
+                    if (d != null)
+                    {
+                        BankTokens.Clear();
+                        foreach (var kv in d)
+                            BankTokens[kv.Key] = new HashSet<string>(kv.Value, StringComparer.OrdinalIgnoreCase);
+                        return;
+                    }
+                }
+                catch (Exception) { /* rebuild below */ }
+            }
+            NameBanks(cfg, weaponTokens, progress);
+        }
+
+        /// <summary>
+        /// Guess event / switch names in every weapon bank (numeric and wpn_*). First a quick pass finds
+        /// which weapon tokens a bank mentions, then the full action/suffix expansion runs for those tokens.
+        /// </summary>
+        public void NameBanks(CodmConfig cfg, IEnumerable<string> weaponTokens, Action<string> progress = null)
+        {
+            if (Names == null) Names = WwiseNames.Load(cfg);
+            var tokens = new HashSet<string>(weaponTokens.Where(t => !string.IsNullOrEmpty(t)), StringComparer.OrdinalIgnoreCase);
+            var bankNames = Banks.Where(b => b.HasHirc && (b.IsNumeric || b.Name.StartsWith("wpn_", StringComparison.OrdinalIgnoreCase)))
+                .Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            BankTokens.Clear();
+            var done = 0; var named = 0;
+            foreach (var name in bankNames)
+            {
+                var info = PreferredCopy(name);
+                WwiseBank bank;
+                try { bank = WwiseBank.Parse(info.Path); } catch (Exception) { continue; }
+                var hit = Names.IdentifyTokens(bank, tokens);
+                var full = new HashSet<string>(hit, StringComparer.OrdinalIgnoreCase);
+                if (IsNumericBankName(name))
+                    full.Add(name.TrimEnd('a','b','c','d','e','f','g','h','i','j','p','3'));
+                else
+                    full.UnionWith(WwiseNames.Classes);
+                named += Names.Guess(bank, full, includeClasses: !IsNumericBankName(name));
+                BankTokens[name] = hit;
+                done++;
+                if (done % 100 == 0) progress?.Invoke($"Wwise names: {done}/{bankNames.Count} banks, {Names.Count} names");
+            }
+            Names.Save();
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(TokensCachePath(cfg)));
+                File.WriteAllText(TokensCachePath(cfg), Newtonsoft.Json.JsonConvert.SerializeObject(BankTokens.ToDictionary(kv => kv.Key, kv => kv.Value.ToList()), Newtonsoft.Json.Formatting.Indented));
+            }
+            catch (Exception) { /* cache only */ }
+            progress?.Invoke($"Wwise names: {Names.Count} resolved, {BankTokens.Count(kv => kv.Value.Count > 0)} of {done} weapon banks identified by name");
+        }
+
+        /// <summary>Banks whose event names mention the token (weapon name).</summary>
+        public IEnumerable<WwiseBankInfo> BanksForToken(string token)
+        {
+            foreach (var kv in BankTokens)
+                if (kv.Value.Contains(token))
+                {
+                    var info = PreferredCopy(kv.Key);
+                    if (info != null) yield return info;
+                }
         }
 
         public bool IsNumericBankName(string name)

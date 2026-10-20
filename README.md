@@ -17,8 +17,9 @@ or updated from this machine; the tooling only reads files.**
 | Textures (DXT1/DXT5/BC7, streamed `.resS`) | works, png by default |
 | Pak navigation | obfuscated names are decoded (letters and digits); weapons grouped as base + skins |
 | Bundle dependencies | shared animation packs, controllers and avatars are loaded automatically (CAB index) |
-| Sounds (Wwise) | skin banks by real weapon id, class bank (wpn_sniper...) from the weapon class map, wems resolved across banks, wav via vgmstream |
-| Effects | FX bundles are linked by name; textures and an object list are exported |
+| Sounds (Wwise) | weapon banks found by their event names (`play_wpn_locus_fire_1p`), wems exported per event, class bank from the weapon class map, wav via vgmstream |
+| Attachments | magazines, barrels, stocks, grips, sights linked through the asset paths inside the attachment bundles |
+| Effects | FX bundles are linked by name; their materials' textures (resolved through the shared texture bundles) and an object list are exported |
 | Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
 
 ## Layout
@@ -81,6 +82,10 @@ Two more files live next to the config:
   sounds (`codm class <weapon> <class>` or the combo box in the browser).
 - `cache/cab-index.json`: which pak contains which serialized file (CAB). Built on first use, about five
   minutes for 17 000 paks, then reused. Needed to load the bundles a weapon references.
+- `cache/wwise-names.json` and `cache/wwise-bank-tokens.json`: Wwise event names recovered by hashing
+  candidate names (FNV-1) and the weapon each bank belongs to. Built on first use (about five minutes).
+- `cache/container-index.json`: asset paths inside the 2 000 attachment bundles, used to link magazines,
+  barrels and stocks to weapons. Built in the background by the browser or by `codm components`.
 
 ## Workflow
 
@@ -112,7 +117,13 @@ See [docs/cli.md](docs/cli.md).
 3. One Cast model per Animator prefab; where the same prefab exists in several bundles the copy whose
    controller resolves the most clips wins. A skin whose own controller bundle is not on disk gets the
    clips of the base weapon prefab with the same role (`_1P`, `_3P`, `_UI`).
-4. Textures of the weapon's own bundles, then the wems of its skin banks and its class bank.
+4. Textures of the weapon's own bundles, then the sounds: every bank whose event names mention the
+   weapon (`play_wpn_locus_fire_1p` lives in `105.bnk`), banks numbered by its id, and the class bank.
+   Wems are written per event (`sounds/105/play_wpn_locus_fire_1p/...`, unnamed events by id,
+   `events.txt` lists the mapping); `--flat-sounds` dumps a bank into one folder instead.
+5. With **FX textures**: each linked effect bundle is loaded with its dependencies, the materials its
+   renderers use are resolved, and the textures those materials reference are exported next to an
+   `objects.txt` listing particle systems, materials and meshes.
 
 Third-person prefabs ship without a controller (the game assigns `basic_3p` at runtime), so their
 animations are the shared packs under `cod_models/weapons/animations/` (load those paks directly).
@@ -127,8 +138,9 @@ animations are the shared packs under `cod_models/weapons/animations/` (load tho
   from the class list have no base weapon sounds until a class is set.
 - Some skin bundles reference controller/clip bundles that are not on disk (never downloaded); those
   skins fall back to the base weapon's animations.
-- Wwise event names are FNV hashes; events are listed by id. Containers inside banks are not walked,
-  so sound extraction is per bank, not per event.
+- Wwise event names are FNV hashes. The recovered names cover the main patterns (`play_wpn_<weapon>_fire_1p`,
+  `play_weapon_<class>_raise_3p`); events that use other words stay listed by id, with their wems
+  grouped under that id. Switch values that pick a weapon inside the class banks are not named yet.
 - Effects cannot be rebuilt as particle systems; the export gives their textures and object names.
 
 ## Documentation

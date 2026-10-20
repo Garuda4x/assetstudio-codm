@@ -1255,6 +1255,9 @@ namespace AssetStudio
                     case VertexChannelFormat.UInt32: //in 5.x
                         return VertexFormat.UInt32;
                     default:
+                        // CoD Mobile (modified 5.6) ships effect meshes with 2017-style formats (UNorm16 = 5...)
+                        if (format >= 0 && format <= (int)VertexFormat2017.SInt32)
+                            return ToVertexFormat(format, new[] { 2017, 1 });
                         throw new ArgumentOutOfRangeException(nameof(format), format, null);
                 }
             }

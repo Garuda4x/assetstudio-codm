@@ -507,6 +507,16 @@ namespace AssetStudio
                             case ClassIDType.RectTransform:
                                 obj = new RectTransform(objectReader);
                                 break;
+                            case ClassIDType.ParticleSystemRenderer:
+                                try
+                                {
+                                    obj = new ParticleSystemRenderer(objectReader);
+                                }
+                                catch (Exception)
+                                {
+                                    obj = new Object(objectReader);
+                                }
+                                break;
                             case ClassIDType.Shader:
                                 try
                                 {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using AssetStudio;
 using AssetStudio.Codm;
@@ -57,6 +58,8 @@ namespace AssetStudioGUI
                         var index = PakIndex.Build(Config, progress);
                         progress?.Invoke("CODM: indexing sound banks...");
                         var wwise = WwiseIndex.Build(Config, progress);
+                        progress?.Invoke("CODM: resolving Wwise names...");
+                        wwise.LoadNames(Config, WeaponTokens(index), progress);
                         progress?.Invoke("CODM: building weapon catalog...");
                         var catalog = WeaponCatalog.Build(index, wwise, WeaponClassMap.Load(Config));
                         Index = index;
@@ -66,6 +69,37 @@ namespace AssetStudioGUI
                     });
                 }
                 return loadTask;
+            }
+        }
+
+        private static IEnumerable<string> WeaponTokens(PakIndex index)
+        {
+            var rx = new System.Text.RegularExpressions.Regex(@"^cod_models/weapons/(mainweapon|meleeweapon|throwweapon|assiweapon|specialweapon)/[a-z]+_(\d+)_([a-z0-9_]+?)(/.*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in index.Entries)
+            {
+                var m = rx.Match(e.Name.Path);
+                if (!m.Success) continue;
+                set.Add(m.Groups[3].Value.ToLowerInvariant());
+                set.Add(WeaponCatalog.NormalizeName(m.Groups[3].Value));
+            }
+            return set;
+        }
+
+        public static ContainerIndex Containers { get; private set; }
+
+        /// <summary>Container-path index of the attachment bundles; links magazines, barrels, stocks... to weapons.</summary>
+        public static ContainerIndex EnsureContainerIndex(Action<string> progress = null, bool rebuild = false)
+        {
+            lock (gate)
+            {
+                if (Containers == null || rebuild)
+                {
+                    Containers = ContainerIndex.Build(Catalog.ComponentPaks, Config, progress, rebuild);
+                    var linked = Catalog.LinkComponentsByContainers(Containers);
+                    progress?.Invoke($"components: {linked} attachment links from container paths");
+                }
+                return Containers;
             }
         }
 

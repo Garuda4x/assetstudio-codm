@@ -69,6 +69,14 @@ Pak name grammar (raw): `[module!ver!ver!]path[#category][@shard].pak`
 | `scenes/map/...`, `_s_br/...`, `_s_cly/...` | ~12 000 | maps and streamed map chunks |
 | `textures/ui_icon`, `cod_prefabs/ngui` | | UI |
 
+### Attachments
+
+`cod_models/weapons/component/<type>/<bucket>` paks (`mag/13.0`, `bar/5.0`, `sto/5.0`...) each hold
+parts for several weapons. The asset folders inside name the owner (`mag01_svdpurplesoul`,
+`bar01_locus`, `bip01_arctic50`), so `ContainerIndex` reads every attachment bundle's container
+paths once (cached) and `WeaponCatalog.LinkComponentsByContainers` links the paks to the weapons whose
+name appears. Sights are named per weapon in the pak name itself (`sight/sig01_locus`).
+
 ### Weapons: base, skins, modules
 
 A weapon folder such as `mainweapon_2537_locusrailgun` is one skin. The mesh lives in the **base**
@@ -121,7 +129,16 @@ derives relations from names.
 - Others: `Music_RedGun_<weapon>`, `vox_*` (1 100+ voice banks), `Amb_MP_*`, `BR_*`, `CLY_*`, `UI_*`.
 - Sound objects in a bank reference wem ids that may be embedded in **another** bank. A global
   media index over every bank's `DIDX` plus the loose `<id>.wem` files resolves 99.95 % of them.
-- Event and action ids are FNV-1 hashes of their Wwise names; the names are not shipped.
+- Event and action ids are FNV-1 hashes of their Wwise names; the names are not shipped, but the
+  weapon events follow patterns that can be regenerated: `play_wpn_<weapon>_fire_1p` / `_3p` / `_3p_br`
+  in the weapon's own bank, `play_weapon_<class>_raise_1p`, `play_weapon_sniper_reload_end_3p` in the
+  class banks, `stop_*` counterparts. `WwiseNames` hashes candidates per bank and `wwise-bank-tokens.json`
+  records which weapon a bank mentions. Bank numbers are **not** the pak ids of the same kind
+  (`105.bnk` is the Locus, `mainweapon_104_locus`; `throwweapon_105_cannon_turret` is unrelated), so
+  the name match is what links banks to weapons; numeric matching is only a fallback.
+- Inside a bank, an event's actions target containers (random/sequence, switch, layer, actor-mixer);
+  `WwiseBank.EventSources` walks them down to the wems. The weapon is selected inside class banks through
+  switch groups whose value names are still unknown; weapon banks have no such ambiguity.
 
 ## Scripts and type information
 

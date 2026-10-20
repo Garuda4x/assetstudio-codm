@@ -35,7 +35,7 @@ namespace AssetStudio.Codm.Wwise
         /// Extract every wem a bank's Sound objects reference (resolved globally) plus any media the bank
         /// embeds that no Sound object names. Converts to wav when vgmstream is configured.
         /// </summary>
-        public static BankExportResult ExportBank(WwiseIndex index, WwiseBankInfo bankInfo, string outDir, string vgmstreamPath, bool convert, Action<string> log = null)
+        public static BankExportResult ExportBank(WwiseIndex index, WwiseBankInfo bankInfo, string outDir, string vgmstreamPath, bool convert, Action<string> log = null, bool byEvent = true, Func<uint, bool> eventFilter = null)
         {
             var bank = WwiseBank.Parse(bankInfo.Path);
             var result = new BankExportResult { BankName = bank.Name };
@@ -44,14 +44,19 @@ namespace AssetStudio.Codm.Wwise
                 ids.Add(m.Id);
             result.SourcesTotal = ids.Count;
             Directory.CreateDirectory(outDir);
+            var names = index.Names;
 
-            foreach (var id in ids.OrderBy(x => x))
+            var covered = new HashSet<uint>();
+            var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Emit(uint id, string dir)
             {
-                var wem = ExtractSource(index, id, outDir);
+                var key = dir + "|" + id;
+                if (!written.Add(key)) return;
+                var wem = ExtractSource(index, id, dir);
                 if (wem == null)
                 {
-                    result.Unresolved.Add(id);
-                    continue;
+                    if (!result.Unresolved.Contains(id)) result.Unresolved.Add(id);
+                    return;
                 }
                 result.Extracted++;
                 result.Files.Add(wem);
@@ -67,8 +72,49 @@ namespace AssetStudio.Codm.Wwise
                 }
             }
 
-            log?.Invoke($"[Wwise] {bank.Name}: {result.Extracted}/{result.SourcesTotal} wems extracted, {result.Converted} converted, {result.Unresolved.Count} unresolved");
+            if (byEvent && bank.Events.Count > 0)
+            {
+                var listing = new List<string>();
+                foreach (var ev in bank.Events.OrderBy(e => names?.GetOrId(e.Id) ?? e.Id.ToString()))
+                {
+                    if (eventFilter != null && !eventFilter(ev.Id)) continue;
+                    var sources = bank.EventSources(ev.Id, out var external);
+                    var label = names?.GetOrId(ev.Id) ?? ev.Id.ToString();
+                    var evDir = Path.Combine(outDir, SafeDir(label));
+                    foreach (var src in sources.OrderBy(x => x))
+                    {
+                        covered.Add(src);
+                        Emit(src, evDir);
+                    }
+                    listing.Add($"{label}	{ev.Id}	{sources.Count} wem(s): {string.Join(" ", sources.OrderBy(x => x))}{(external.Count > 0 ? "	objects in other banks: " + string.Join(" ", external) : "")}");
+                }
+                if (eventFilter == null)
+                {
+                    var rest = ids.Where(i => !covered.Contains(i)).OrderBy(x => x).ToList();
+                    if (rest.Count > 0)
+                    {
+                        var restDir = Path.Combine(outDir, "_not_reached_by_events");
+                        foreach (var id in rest) Emit(id, restDir);
+                        listing.Add($"_not_reached_by_events	-	{rest.Count} wem(s)");
+                    }
+                }
+                File.WriteAllLines(Path.Combine(outDir, "events.txt"), listing);
+            }
+            else
+            {
+                foreach (var id in ids.OrderBy(x => x))
+                    Emit(id, outDir);
+            }
+
+            log?.Invoke($"[Wwise] {bank.Name}: {result.Extracted} wem files written ({result.SourcesTotal} sources, {result.Converted} converted, {result.Unresolved.Count} unresolved){(byEvent ? ", grouped by event" : "")}");
             return result;
+        }
+
+        private static string SafeDir(string name)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+            return new string(chars).Trim();
         }
 
         /// <summary>Run vgmstream-cli on one wem. Returns the wav path or null when conversion failed.</summary>

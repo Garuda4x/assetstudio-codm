@@ -64,7 +64,28 @@ namespace AssetStudio.Codm
             return 2;
         }
 
-        public static DependencyReport Resolve(AssetsManager am, CabIndex cabs, CodmConfig cfg, Action<string> log = null, int maxRounds = 3, int maxPaks = 60, IEnumerable<string> skipPrefixes = null)
+        /// <summary>Load the paks that contain the given serialized file names (targeted, no rounds).</summary>
+        public static List<PakEntry> LoadCabs(AssetsManager am, CabIndex cabs, CodmConfig cfg, IEnumerable<string> cabNames, Action<string> log = null)
+        {
+            var loaded = new HashSet<string>(am.assetsFileList.Select(f => f.fileName), StringComparer.OrdinalIgnoreCase);
+            var toLoad = new List<PakEntry>();
+            foreach (var cab in cabNames.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (IsSkippable(cab) || loaded.Contains(cab)) continue;
+                var candidates = cabs.PaksFor(cab);
+                if (candidates.Count == 0) continue;
+                var pick = candidates.OrderBy(p => cfg.SourceRank(p.Source)).First();
+                if (!toLoad.Contains(pick)) toLoad.Add(pick);
+            }
+            if (toLoad.Count > 0)
+            {
+                log?.Invoke($"[Deps] loading {toLoad.Count} pak(s) for referenced assets");
+                am.LoadFiles(toLoad.Select(p => p.FullPath).ToArray());
+            }
+            return toLoad;
+        }
+
+        public static DependencyReport Resolve(AssetsManager am, CabIndex cabs, CodmConfig cfg, Action<string> log = null, int maxRounds = 3, int maxPaks = 60, IEnumerable<string> skipPrefixes = null, Func<PakEntry, bool> deepFilter = null)
         {
             var report = new DependencyReport();
             var attempted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -91,7 +112,7 @@ namespace AssetStudio.Codm
                         toLoad.Add(pick);
                 }
                 if (round > 0)
-                    toLoad = toLoad.Where(p => Priority(p) == 0).ToList(); // deeper rounds: only what animations need
+                    toLoad = toLoad.Where(deepFilter ?? (p => Priority(p) == 0)).ToList(); // deeper rounds: only what the caller needs
                 toLoad = toLoad.OrderBy(Priority).ThenBy(p => p.Size).ToList();
                 if (toLoad.Count == 0)
                     break;

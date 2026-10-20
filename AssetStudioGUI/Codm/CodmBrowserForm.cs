@@ -310,6 +310,16 @@ namespace AssetStudioGUI
                 if (CodmSession.Index.MissingFolders.Count > 0)
                     Log("Missing pak folders: " + string.Join("; ", CodmSession.Index.MissingFolders));
                 ApplyPendingQuery();
+                // attachments by container path, in the background (minutes the first time, cached after)
+                var _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        CodmSession.EnsureContainerIndex(Log);
+                        BeginInvoke(new Action(() => { if (current != null) ShowWeapon(current); }));
+                    }
+                    catch (Exception ex) { Log("component index failed: " + ex.Message); }
+                });
             }
             catch (Exception ex)
             {
@@ -410,14 +420,14 @@ namespace AssetStudioGUI
             AddGroup("Weapon paks", PakIndex.OrderForLoading(w.Paks, cfg), true);
             foreach (var a in w.Ancestors())
                 AddGroup("Base: " + a.Folder, PakIndex.OrderForLoading(a.Paks, cfg), true);
-            AddGroup("Components", PakIndex.OrderForLoading(w.Components, cfg), false);
+            AddGroup("Components", PakIndex.OrderForLoading(w.AllComponents(), cfg), false, w);
             AddGroup("Effects", PakIndex.OrderForLoading(w.Effects, cfg), false);
             AddBankGroup("Sound banks", w.Banks);
             AddBankGroup("Class banks (shared media)", w.SharedBanks);
             assetList.EndUpdate();
         }
 
-        private void AddGroup(string name, IEnumerable<PakEntry> entries, bool check)
+        private void AddGroup(string name, IEnumerable<PakEntry> entries, bool check, WeaponEntry evidenceOf = null)
         {
             var list = entries.ToList();
             if (list.Count == 0)
@@ -426,12 +436,20 @@ namespace AssetStudioGUI
             assetList.Groups.Add(group);
             foreach (var e in list)
             {
-                var item = new ListViewItem(new[] { name, e.Source, e.Name.Module ?? "", FormatSize(e.Size), e.Name.Path + (e.Name.Category != null ? "#" + e.Name.Category : "") + (e.Name.Shard >= 0 ? "@" + e.Name.Shard : "") })
+                var evidence = evidenceOf?.ComponentPaths(e);
+                var text = e.Name.Path + (e.Name.Category != null ? "#" + e.Name.Category : "") + (e.Name.Shard >= 0 ? "@" + e.Name.Shard : "");
+                if (evidence != null && evidence.Count > 0)
+                {
+                    var p = evidence[0];
+                    var parts = p.Split('/');
+                    text += "   <- " + (parts.Length >= 2 ? parts[parts.Length - 2] : p);
+                }
+                var item = new ListViewItem(new[] { name, e.Source, e.Name.Module ?? "", FormatSize(e.Size), text })
                 {
                     Tag = e,
                     Group = group,
                     Checked = check,
-                    ToolTipText = e.FullPath,
+                    ToolTipText = evidence != null && evidence.Count > 0 ? string.Join(Environment.NewLine, evidence.Take(12)) : e.FullPath,
                 };
                 assetList.Items.Add(item);
             }
@@ -683,11 +701,13 @@ namespace AssetStudioGUI
                     sb.AppendLine($"  {kv.Value,5}  {kv.Key}");
                 sb.AppendLine();
                 var actionsById = bank.Actions.ToDictionary(a => a.Id);
-                sb.AppendLine("events (id -> actions):");
+                var nm = wwise.Names;
+                sb.AppendLine("events (name or id, wems reached, actions):");
                 foreach (var ev in bank.Events.Take(200))
                 {
-                    var acts = ev.ActionIds.Select(id => actionsById.TryGetValue(id, out var a) ? $"{a.ActionTypeName}->{a.TargetId}" : id.ToString());
-                    sb.AppendLine($"  {ev.Id,-11} {string.Join("  ", acts)}");
+                    var acts = ev.ActionIds.Select(id => actionsById.TryGetValue(id, out var a) ? $"{a.ActionTypeName}->{(nm?.GetOrId(a.TargetId) ?? a.TargetId.ToString())}" : id.ToString());
+                    var srcs = bank.EventSources(ev.Id, out var ext);
+                    sb.AppendLine($"  {(nm?.GetOrId(ev.Id) ?? ev.Id.ToString()),-36} {srcs.Count,3} wem(s)  {string.Join("  ", acts)}");
                 }
                 sb.AppendLine();
                 sb.AppendLine("sounds (sound id, wem id, codec, size):");

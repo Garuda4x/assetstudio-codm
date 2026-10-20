@@ -20,6 +20,7 @@ namespace CodmCli
         private static WwiseIndex wwiseIndex;
         private static WeaponCatalog catalog;
         private static CabIndex cabIndex;
+        private static ContainerIndex containerIndex;
 
         private static int Main(string[] args)
         {
@@ -51,6 +52,9 @@ namespace CodmCli
                     case "export": return CmdExport(opts);
                     case "cabindex": return CmdCabIndex(opts);
                     case "anims": return CmdAnims(opts);
+                    case "mbscan": return CmdMbScan(opts);
+                    case "wwnames": return CmdWwNames(opts);
+                    case "components": return CmdComponents(opts);
                     case "deps": return CmdDeps(opts);
                     case "classes": return CmdClasses(opts);
                     case "class": return CmdClass(opts);
@@ -89,12 +93,15 @@ namespace CodmCli
             Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
             Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
             Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
+            Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids");
+            Console.WriteLine("  wwnames [--rebuild]            guess Wwise event/switch names (FNV) for all weapon banks; links banks to weapons by name");
+            Console.WriteLine("  components [--rebuild]         index attachment bundles by their container paths and link them to weapons");
             Console.WriteLine("  deps <pak...>                  load bundle(s) and show which other paks they reference");
             Console.WriteLine("  classes [--unknown]            sound class per weapon family (wpn_<class> bank)");
             Console.WriteLine("  class <weapon> [<class>|-]     show or set the sound class of a weapon family (ar smg lmg sniper shotgun pistol launcher melee)");
             Console.WriteLine("  banks [filter]                 list sound banks");
             Console.WriteLine("  bank <name|path>               show a bank: events, actions, sounds and where their wems live");
-            Console.WriteLine("  wems <bank> [--out d] [--wav]  extract every wem a bank uses (converted with vgmstream when --wav)");
+            Console.WriteLine("  wems <bank> [--out d] [--wav]  extract every wem a bank uses, one folder per event (--flat for one folder; vgmstream with --wav)");
             Console.WriteLine("  scan <pak|dir> [-v] [--csv f]  bundle metadata scan (types, names, container paths)");
             Console.WriteLine("  mono <pak>                     list MonoScript / MonoBehaviour and embedded strings");
             Console.WriteLine("  typetree <pak>                 report whether the bundle carries type trees");
@@ -121,7 +128,34 @@ namespace CodmCli
             if (catalog != null) return;
             EnsureIndex();
             if (withBanks) EnsureWwise();
+            if (withBanks)
+                wwiseIndex.LoadNames(cfg, WeaponTokens(pakIndex), Console.Error.WriteLine);
             catalog = WeaponCatalog.Build(pakIndex, withBanks ? wwiseIndex : null, WeaponClassMap.Load(cfg));
+        }
+
+        /// <summary>Weapon names and ids from the pak names, the tokens that can appear in Wwise event names.</summary>
+        private static IEnumerable<string> WeaponTokens(PakIndex index)
+        {
+            var rx = new System.Text.RegularExpressions.Regex(@"^cod_models/weapons/(mainweapon|meleeweapon|throwweapon|assiweapon|specialweapon)/[a-z]+_(\d+)_([a-z0-9_]+?)(/.*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in index.Entries)
+            {
+                var m = rx.Match(e.Name.Path);
+                if (!m.Success) continue;
+                set.Add(m.Groups[3].Value.ToLowerInvariant());
+                set.Add(WeaponCatalog.NormalizeName(m.Groups[3].Value));
+            }
+            return set;
+        }
+
+        private static ContainerIndex EnsureContainerIndex(bool rebuild = false)
+        {
+            if (containerIndex != null && !rebuild) return containerIndex;
+            EnsureCatalog();
+            containerIndex = ContainerIndex.Build(catalog.ComponentPaks, cfg, Console.Error.WriteLine, rebuild);
+            var linked = catalog.LinkComponentsByContainers(containerIndex);
+            Console.Error.WriteLine($"components: {linked} attachment links from container paths");
+            return containerIndex;
         }
 
         private static CabIndex EnsureCabIndex(bool rebuild = false)
@@ -272,10 +306,11 @@ namespace CodmCli
                 foreach (var p in a.Paks.OrderBy(p => p.Name.Decoded))
                     Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
             }
-            if (w.Components.Count > 0)
+            var comps = w.AllComponents();
+            if (comps.Count > 0)
             {
-                Console.WriteLine($"  components ({w.Components.Count}):");
-                foreach (var p in w.Components.OrderBy(p => p.Name.Decoded))
+                Console.WriteLine($"  components ({comps.Count}, run 'codm components' once to link magazines/barrels/stocks by container path):");
+                foreach (var p in comps.OrderBy(p => p.Name.Decoded))
                     Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
             }
             if (w.Effects.Count > 0)
@@ -315,11 +350,14 @@ namespace CodmCli
                 IncludeComponents = o.Has("components"),
                 ConvertWem = !o.Has("no-wav"),
                 ResolveDependencies = !o.Has("no-deps"),
+                SoundsByEvent = !o.Has("flat-sounds"),
                 MaxDependencyPaks = o.GetInt("max-deps", 60),
                 AllPrefabCopies = o.Has("all-copies"),
             };
             if (string.IsNullOrEmpty(cfg.VgmstreamPath))
                 cfg.VgmstreamPath = WemTools.FindVgmstream() ?? "";
+            if (options.IncludeComponents)
+                EnsureContainerIndex();
             var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => EnsureCabIndex());
             var report = svc.ExportWeapon(w, outRoot, options, Console.WriteLine);
             Console.WriteLine($"models={report.Models.Count} (+{report.SkippedPrefabCopies.Count} duplicate copies skipped) textures={report.Textures.Count} deps={report.DependencyPaks.Count} banks={report.Banks.Count} wems={report.WemsExtracted} (wav {report.WemsConverted}) warnings={report.Warnings.Count}");
@@ -393,6 +431,131 @@ namespace CodmCli
             finally
             {
                 am.Clear();
+            }
+            return 0;
+        }
+
+        private static int CmdMbScan(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("mbscan <weapon|pak> [--deps]"); return 2; }
+            EnsureCatalog();
+            var cabs = EnsureCabIndex();
+            string[] files;
+            HashSet<string> own;
+            if (File.Exists(o.Positional[0]))
+            {
+                files = new[] { Path.GetFullPath(o.Positional[0]) };
+            }
+            else
+            {
+                var w = ResolveWeapon(o.Positional[0]);
+                if (w == null) return 1;
+                var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => cabs);
+                files = svc.SelectPaks(w, new WeaponExportOptions()).Select(p => p.FullPath).ToArray();
+            }
+            own = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
+            var hirc = wwiseIndex.HircObjects(Console.Error.WriteLine);
+            var am = new AssetsManager();
+            try
+            {
+                am.LoadFiles(files);
+                if (o.Has("deps"))
+                    DependencyResolver.Resolve(am, cabs, cfg, Console.Error.WriteLine);
+                var loaded = new HashSet<string>(am.assetsFileList.Select(f => f.fileName), StringComparer.OrdinalIgnoreCase);
+                foreach (var file in am.assetsFileList)
+                {
+                    if (!own.Contains(file.originalPath ?? file.fullName ?? "")) continue;
+                    foreach (var objInfo in file.m_Objects)
+                    {
+                        if ((ClassIDType)objInfo.classID != ClassIDType.MonoBehaviour) continue;
+                        var reader = new ObjectReader(file.reader, file, objInfo);
+                        MonoBehaviour mb;
+                        try { mb = new MonoBehaviour(reader); } catch (Exception) { continue; }
+                        var className = mb.m_Script.TryGet(out MonoScript ms) ? ms.m_ClassName : "?";
+                        var goName = mb.m_GameObject.TryGet(out GameObject go) ? go.m_Name : "";
+                        var bodyStart = reader.Position;
+                        var body = reader.ReadBytes((int)Math.Min(reader.Remaining, 1 << 20));
+                        Console.WriteLine($"MonoBehaviour {className} name='{mb.m_Name}' go='{goName}' pathID={objInfo.m_PathID} body={body.Length} B  ({PakName.Parse(Path.GetFileName(file.originalPath ?? "")).Decoded})");
+
+                        // PPtr pattern: int32 fileID (0..externals) + int64 pathID (non-zero), 4-byte aligned
+                        var pptrHits = 0;
+                        for (var off = 0; off + 12 <= body.Length; off += 4)
+                        {
+                            var fileId = BitConverter.ToInt32(body, off);
+                            if (fileId < 0 || fileId > file.m_Externals.Count) continue;
+                            var pathId = BitConverter.ToInt64(body, off + 4);
+                            if (pathId == 0 || pathId < -1000000000000L) continue;
+                            SerializedFile target = null;
+                            string targetFile;
+                            if (fileId == 0) { target = file; targetFile = file.fileName; }
+                            else
+                            {
+                                targetFile = file.m_Externals[fileId - 1].fileName;
+                                target = am.assetsFileList.FirstOrDefault(f => f.fileName.Equals(targetFile, StringComparison.OrdinalIgnoreCase));
+                            }
+                            if (target != null)
+                            {
+                                if (!target.ObjectsDic.TryGetValue(pathId, out var obj)) continue;
+                                var nm = (obj as NamedObject)?.m_Name ?? (obj as GameObject)?.m_Name ?? "";
+                                if (obj is MonoBehaviour mb2 && mb2.m_Script.TryGet(out MonoScript ms2)) nm = $"{ms2.m_ClassName} '{mb2.m_Name}'";
+                                Console.WriteLine($"    +0x{off:X4} PPtr -> {obj.type} '{nm}' (pathID {pathId}{(fileId > 0 ? ", in " + targetFile : "")})");
+                                pptrHits++;
+                            }
+                            else if (fileId > 0)
+                            {
+                                // external not loaded: only report when the pathID looks like a real Unity 5 pathID (small positive or hash-like)
+                                var paks = cabs.PaksFor(targetFile);
+                                if (paks.Count == 0 && !loaded.Contains(targetFile)) continue;
+                                if (pathId < 0 || pathId > 1L << 40) continue;
+                                Console.WriteLine($"    +0x{off:X4} PPtr -> external {targetFile} pathID {pathId}  [{(paks.Count > 0 ? paks[0].Name.Decoded : "not in any pak")}]");
+                                pptrHits++;
+                            }
+                        }
+
+                        // Wwise ids: any aligned u32 that is a HIRC object id in some bank
+                        var wwiseHits = 0;
+                        for (var off = 0; off + 4 <= body.Length; off += 4)
+                        {
+                            var v = BitConverter.ToUInt32(body, off);
+                            if (v < 1000 || !hirc.TryGetValue(v, out var r)) continue;
+                            Console.WriteLine($"    +0x{off:X4} Wwise {HircTypeName(r.Type)} {v} in {r.Bank}.bnk{(r.Copies > 1 ? $" (+{r.Copies - 1} more)" : "")}");
+                            wwiseHits++;
+                        }
+                        if (pptrHits == 0 && wwiseHits == 0)
+                            Console.WriteLine("    (no PPtr or Wwise id hits)");
+                    }
+                }
+            }
+            finally
+            {
+                am.Clear();
+            }
+            return 0;
+        }
+
+        private static int CmdWwNames(Options o)
+        {
+            EnsureIndex();
+            EnsureWwise();
+            wwiseIndex.LoadNames(cfg, WeaponTokens(pakIndex), Console.Error.WriteLine, o.Has("rebuild"));
+            var identified = wwiseIndex.BankTokens.Where(kv => kv.Value.Count > 0).ToList();
+            Console.WriteLine($"{wwiseIndex.Names.Count} names resolved; {identified.Count} of {wwiseIndex.BankTokens.Count} weapon banks identified by name; cache {wwiseIndex.Names.Path}");
+            foreach (var kv in identified.OrderBy(kv => kv.Key).Take(o.GetInt("max", 60)))
+                Console.WriteLine($"  {kv.Key,-16} {string.Join(", ", kv.Value)}");
+            return 0;
+        }
+
+        private static int CmdComponents(Options o)
+        {
+            EnsureContainerIndex(o.Has("rebuild"));
+            var withComponents = catalog.Weapons.Count(w => w.Components.Count > 0);
+            Console.WriteLine($"{catalog.ComponentPaks.Count} component paks, {withComponents} weapons with linked attachments");
+            if (o.Positional.Count > 0)
+            {
+                var w = ResolveWeapon(o.Positional[0]);
+                if (w == null) return 1;
+                foreach (var c in w.AllComponents())
+                    Console.WriteLine($"  {c.Source,-9} {Size(c.Size),9}  {c.Name.Decoded}  <- {string.Join(" | ", w.ComponentPaths(c).Take(2).Select(x => x.Substring(x.LastIndexOf('/', Math.Max(0, x.LastIndexOf('/') - 1)) + 1)))}");
             }
             return 0;
         }
@@ -500,11 +663,19 @@ namespace CodmCli
             Console.WriteLine($"objects: {string.Join(", ", bank.ObjectTypeCounts.OrderBy(kv => kv.Key).Select(kv => $"{HircTypeName(kv.Key)}={kv.Value}"))}");
             Console.WriteLine($"embedded media: {bank.Embedded.Count}");
             var actionsById = bank.Actions.ToDictionary(a => a.Id);
+            var nm = wwiseIndex.Names ?? WwiseNames.Load(cfg);
             Console.WriteLine($"events ({bank.Events.Count}):");
             foreach (var ev in bank.Events)
             {
-                var acts = ev.ActionIds.Select(id => actionsById.TryGetValue(id, out var a) ? $"{a.ActionTypeName}->{a.TargetId}" : id.ToString());
-                Console.WriteLine($"  {ev.Id,-11} {string.Join("  ", acts)}");
+                var acts = ev.ActionIds.Select(id => actionsById.TryGetValue(id, out var a) ? $"{a.ActionTypeName}->{nm.GetOrId(a.TargetId)}" : id.ToString());
+                var srcs = bank.EventSources(ev.Id, out var ext);
+                Console.WriteLine($"  {nm.GetOrId(ev.Id),-36} {srcs.Count,3} wem(s){(ext.Count > 0 ? $" +{ext.Count} ext" : "")}  {string.Join("  ", acts)}");
+            }
+            if (bank.Containers.Count > 0)
+            {
+                var sw = bank.Containers.Values.Where(c => c.Type == 6).ToList();
+                if (sw.Count > 0)
+                    Console.WriteLine($"switch containers: {sw.Count}; groups: {string.Join(", ", sw.Select(c => nm.GetOrId(c.SwitchGroupId)).Distinct())}; values: {string.Join(", ", sw.SelectMany(c => c.SwitchMap.Keys).Distinct().Select(nm.GetOrId).Take(40))}");
             }
             Console.WriteLine($"sounds ({bank.Sounds.Count}):");
             var embeddedIds = new HashSet<uint>(bank.Embedded.Select(m => m.Id));
@@ -561,7 +732,8 @@ namespace CodmCli
             var outDir = o.Get("out") ?? Path.Combine(cfg.ExportRootPath, "sounds", info.Name);
             if (o.Has("wav") && string.IsNullOrEmpty(cfg.VgmstreamPath))
                 cfg.VgmstreamPath = WemTools.FindVgmstream() ?? "";
-            var r = WemTools.ExportBank(wwiseIndex, info, outDir, cfg.VgmstreamPath, o.Has("wav"), Console.WriteLine);
+            EnsureCatalog();
+            var r = WemTools.ExportBank(wwiseIndex, info, outDir, cfg.VgmstreamPath, o.Has("wav"), Console.WriteLine, !o.Has("flat"));
             Console.WriteLine($"{r.Extracted}/{r.SourcesTotal} extracted, {r.Converted} converted -> {outDir}");
             if (r.Unresolved.Count > 0)
                 Console.WriteLine("unresolved: " + string.Join(", ", r.Unresolved));
