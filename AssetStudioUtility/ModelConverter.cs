@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -21,7 +21,7 @@ namespace AssetStudio
         private Dictionary<uint, string> bonePathHash = new Dictionary<uint, string>();
         private Dictionary<Texture2D, string> textureNameDictionary = new Dictionary<Texture2D, string>();
         private Dictionary<Transform, ImportedFrame> transformDictionary = new Dictionary<Transform, ImportedFrame>();
-        Dictionary<uint, string> morphChannelNames = new Dictionary<uint, string>();
+        private Dictionary<uint, string> morphChannelNames = new Dictionary<uint, string>();
 
         public ModelConverter(GameObject m_GameObject, ImageFormat imageFormat, AnimationClip[] animationList = null)
         {
@@ -62,6 +62,7 @@ namespace AssetStudio
                 var m_Transform = m_GameObject.m_Transform;
                 ConvertTransforms(m_Transform, RootFrame);
                 CreateBonePathHash(m_Transform);
+                EnsureCodmAnimOnlyBones();
             }
             foreach (var m_GameObject in m_GameObjects)
             {
@@ -96,10 +97,95 @@ namespace AssetStudio
             ConvertAnimations();
         }
 
+        public ModelConverter(Mesh mesh, Avatar avatar, ImageFormat imageFormat, Material[] materials = null)
+        {
+            this.imageFormat = imageFormat;
+            this.avatar = avatar;
+
+            BuildSkeletonFromAvatar(mesh.m_Name);
+
+            // Convert the mesh directly — attach to root frame
+            ConvertMeshDirect(mesh, materials);
+        }
+
+        private void BuildSkeletonFromAvatar(string rootName)
+        {
+            if (avatar != null)
+            {
+                var skeleton = avatar.m_Avatar.m_AvatarSkeleton;
+                var skeletonPose = avatar.m_Avatar.m_DefaultPose ?? avatar.m_Avatar.m_AvatarSkeletonPose;
+
+                var skeletonPaths = new List<string>();
+                foreach (var id in skeleton.m_ID)
+                {
+                    var path = avatar.FindBonePath(id);
+                    skeletonPaths.Add(path);
+                }
+
+                var rootXform = skeletonPose.m_X[0];
+                RootFrame = CreateFrame(rootName, rootXform.t, rootXform.q, rootXform.s);
+
+                for (var i = 1; i < skeletonPaths.Count; i++)
+                {
+                    var path = skeletonPaths[i];
+                    if (string.IsNullOrEmpty(path)) continue;
+
+                    var strs = path.Split('/');
+                    var transformName = strs.Last();
+                    var xform = skeletonPose.m_X[i];
+
+                    ImportedFrame parentFrame;
+                    if (strs.Length == 1)
+                    {
+                        parentFrame = RootFrame;
+                    }
+                    else
+                    {
+                        var parentFramePath = path.Substring(0, path.LastIndexOf('/'));
+                        parentFrame = RootFrame.FindRelativeFrameWithPath(parentFramePath);
+                        if (parentFrame == null)
+                        {
+                            parentFrame = RootFrame;
+                        }
+                    }
+
+                    var existingFrame = parentFrame.FindChild(transformName, false);
+                    if (existingFrame != null)
+                    {
+                        SetFrame(existingFrame, xform.t, xform.q, xform.s);
+                    }
+                    else
+                    {
+                        var frame = CreateFrame(transformName, xform.t, xform.q, xform.s);
+                        parentFrame.AddChild(frame);
+                    }
+                }
+
+                for (var i = 0; i < skeletonPaths.Count; i++)
+                {
+                    var path = skeletonPaths[i];
+                    if (string.IsNullOrEmpty(path)) continue;
+
+                    var crc = new SevenZip.CRC();
+                    var bytes = Encoding.UTF8.GetBytes(path);
+                    crc.Update(bytes, 0, (uint)bytes.Length);
+                    bonePathHash[crc.GetDigest()] = path;
+                }
+
+                Logger.Info($"[MeshDirect] Root='{RootFrame.Name}', SkeletonPaths={skeletonPaths.Count}, RootFrame.Children={RootFrame.Count}");
+            }
+            else
+            {
+                RootFrame = CreateFrame(rootName, Vector3.Zero, new Quaternion(0, 0, 0, 1), Vector3.One);
+            }
+        }
+
         private void InitWithAnimator(Animator m_Animator)
         {
             if (m_Animator.m_Avatar.TryGet(out var m_Avatar))
                 avatar = m_Avatar;
+
+            Logger.Info($"[SkinDebug] InitWithAnimator: Avatar = {(avatar != null ? avatar.m_Name : "NULL")}, HasTransformHierarchy = {m_Animator.m_HasTransformHierarchy}");
 
             m_Animator.m_GameObject.TryGet(out var m_GameObject);
             InitWithGameObject(m_GameObject, m_Animator.m_HasTransformHierarchy);
@@ -112,6 +198,7 @@ namespace AssetStudio
             {
                 ConvertTransforms(m_Transform, null);
                 DeoptimizeTransformHierarchy();
+                EnsureCodmAnimOnlyBones();
             }
             else
             {
@@ -139,9 +226,94 @@ namespace AssetStudio
                 }
 
                 CreateBonePathHash(m_Transform);
+                EnsureCodmAnimOnlyBones();
             }
 
             ConvertMeshRenderer(m_Transform);
+            if (CodmBone01BrhCompensate.ForceBrhToKnifeBind)
+                ApplyForceBrhToKnifeBind();
+        }
+
+        /// <summary>
+        /// CODM hollow clips bind <c>Bip01/Bone_RightHand/Bone01/Bone02</c> (CRC 0x4714F6A0),
+        /// but the shipped 1P prefab has no Bone02 Transform (mesh sits under Bone01).
+        /// Inject an identity Bone02 so those curves resolve instead of exporting as unknown.
+        /// </summary>
+        private void EnsureCodmAnimOnlyBones()
+        {
+            if (RootFrame == null)
+                return;
+
+            ImportedFrame FindNamed(ImportedFrame f, string name)
+            {
+                if (f.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    return f;
+                for (int i = 0; i < f.Count; i++)
+                {
+                    var hit = FindNamed(f[i], name);
+                    if (hit != null) return hit;
+                }
+                return null;
+            }
+
+            var bone01 = FindNamed(RootFrame, "Bone01");
+            if (bone01 == null)
+                return;
+
+            ImportedFrame bone02 = null;
+            for (int i = 0; i < bone01.Count; i++)
+            {
+                if (bone01[i].Name.Equals("Bone02", StringComparison.OrdinalIgnoreCase))
+                {
+                    bone02 = bone01[i];
+                    break;
+                }
+            }
+            if (bone02 == null)
+            {
+                bone02 = CreateFrame("Bone02", Vector3.Zero, new Quaternion(0, 0, 0, 1), Vector3.One);
+                bone01.AddChild(bone02);
+                Logger.Info($"[AnimExport] injected anim-only Bone02 under '{bone01.Path}' (CODM clip binding 0x4714F6A0)");
+            }
+
+            // Register all path-hash suffixes like CreateBonePathHash
+            void AddPathHashes(string path)
+            {
+                var name = path;
+                while (!string.IsNullOrEmpty(name))
+                {
+                    var crc = new SevenZip.CRC();
+                    var bytes = Encoding.UTF8.GetBytes(name);
+                    crc.Update(bytes, 0, (uint)bytes.Length);
+                    bonePathHash[crc.GetDigest()] = path;
+                    int index = name.IndexOf("/", StringComparison.Ordinal);
+                    if (index < 0)
+                        break;
+                    name = name.Substring(index + 1);
+                }
+            }
+            AddPathHashes(bone02.Path);
+            // Explicit known CRC (verified) in case Path prefix differs from clip authorship root
+            AddPathHashes("Bip01/Bone_RightHand/Bone01/Bone02");
+        }
+
+        private void ApplyForceBrhToKnifeBind()
+        {
+            foreach (var kv in transformDictionary)
+            {
+                var t = kv.Key;
+                if (t == null || !t.m_GameObject.TryGet(out var go) || go == null)
+                    continue;
+                if (!go.m_Name.Equals("Bone_RightHand", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var frame = kv.Value;
+                SetFrame(frame, CodmBone01BrhCompensate.KnifeBrhP, CodmBone01BrhCompensate.KnifeBrhR, frame.LocalScale);
+                Logger.Info(
+                    $"[AnimExport] Bone_RightHand rest forced to knife bind " +
+                    $"P=({CodmBone01BrhCompensate.KnifeBrhP.X:G4},{CodmBone01BrhCompensate.KnifeBrhP.Y:G4},{CodmBone01BrhCompensate.KnifeBrhP.Z:G4}) R=I");
+                return;
+            }
+            Logger.Warning("[AnimExport] ForceBrhToKnifeBind: Bone_RightHand frame not found");
         }
 
         private void ConvertMeshRenderer(Transform m_Transform)
@@ -263,7 +435,42 @@ namespace AssetStudio
         {
             var mesh = GetMesh(meshR);
             if (mesh == null)
+            {
+                Logger.Warning($"[SkinDebug] GetMesh returned null for {meshR.GetType().Name} (m_PathID={meshR.m_PathID})");
                 return;
+            }
+
+            // === Diagnostic logging ===
+            Logger.Info($"[SkinDebug] === Processing mesh: {mesh.m_Name} ===");
+            Logger.Info($"[SkinDebug]   Unity version: {string.Join(".", meshR.reader.version)} (raw: {meshR.reader.assetsFile.unityVersion})");
+            Logger.Info($"[SkinDebug]   Renderer type: {meshR.GetType().Name}");
+            Logger.Info($"[SkinDebug]   m_VertexCount: {mesh.m_VertexCount}");
+            Logger.Info($"[SkinDebug]   m_Skin: {(mesh.m_Skin != null ? $"{mesh.m_Skin.Length} entries" : "NULL")}");
+            Logger.Info($"[SkinDebug]   m_BindPose: {(mesh.m_BindPose != null ? $"{mesh.m_BindPose.Length} entries" : "NULL")}");
+            Logger.Info($"[SkinDebug]   m_BoneNameHashes: {(mesh.m_BoneNameHashes != null ? $"{mesh.m_BoneNameHashes.Length} entries" : "NULL")}");
+            Logger.Info($"[SkinDebug]   Avatar: {(avatar != null ? $"{avatar.m_Name} (TOS: {avatar.m_TOS.Length})" : "NULL")}");
+            Logger.Info($"[SkinDebug]   bonePathHash count: {bonePathHash.Count}");
+            if (mesh.m_Skin != null && mesh.m_Skin.Length > 0)
+            {
+                var nonZeroWeights = 0;
+                for (int s = 0; s < mesh.m_Skin.Length; s++)
+                {
+                    if (mesh.m_Skin[s].weight[0] > 0) nonZeroWeights++;
+                }
+                Logger.Info($"[SkinDebug]   Vertices with non-zero weight[0]: {nonZeroWeights}/{mesh.m_Skin.Length}");
+            }
+            if (meshR is SkinnedMeshRenderer sMeshDbg)
+            {
+                Logger.Info($"[SkinDebug]   m_Bones.Length: {sMeshDbg.m_Bones.Length}");
+                var resolvedCount = 0;
+                for (int b = 0; b < sMeshDbg.m_Bones.Length; b++)
+                {
+                    if (sMeshDbg.m_Bones[b].TryGet(out _)) resolvedCount++;
+                }
+                Logger.Info($"[SkinDebug]   Resolvable bone PPtrs: {resolvedCount}/{sMeshDbg.m_Bones.Length}");
+            }
+            // === End diagnostic logging ===
+
             var iMesh = new ImportedMesh();
             meshR.m_GameObject.TryGet(out var m_GameObject2);
             iMesh.Path = GetTransformPath(m_GameObject2.m_Transform);
@@ -461,6 +668,8 @@ namespace AssetStudio
                     }
                 }
 
+                Logger.Info($"[SkinDebug]   Final boneType: {boneType}");
+
                 if (boneType == 1)
                 {
                     var boneCount = sMesh.m_Bones.Length;
@@ -476,6 +685,7 @@ namespace AssetStudio
                         bone.Matrix = convert * mesh.m_BindPose[i] * convert;
                         iMesh.BoneList.Add(bone);
                     }
+                    Logger.Info($"[SkinDebug]   BoneList: {iMesh.BoneList.Count} bones, null paths: {iMesh.BoneList.Count(b => b.Path == null)}");
                 }
                 else if (boneType == 2)
                 {
@@ -491,6 +701,11 @@ namespace AssetStudio
                         bone.Matrix = convert * mesh.m_BindPose[i] * convert;
                         iMesh.BoneList.Add(bone);
                     }
+                    Logger.Info($"[SkinDebug]   BoneList: {iMesh.BoneList.Count} bones, null paths: {iMesh.BoneList.Count(b => b.Path == null)}");
+                }
+                else
+                {
+                    Logger.Warning($"[SkinDebug]   *** NO BONES RESOLVED - boneType=0 ***");
                 }
 
                 //Morphs
@@ -572,14 +787,166 @@ namespace AssetStudio
             MeshList.Add(iMesh);
         }
 
+        private void ConvertMeshDirect(Mesh mesh, Material[] materials = null)
+        {
+            var iMesh = new ImportedMesh();
+            iMesh.Path = RootFrame.Path;
+            Logger.Info($"[MeshDirect] iMesh.Path='{iMesh.Path}', RootFrame.Name='{RootFrame.Name}', RootFrame.Path='{RootFrame.Path}', RootFrame.Children={RootFrame.Count}");
+            iMesh.SubmeshList = new List<ImportedSubmesh>();
+
+            iMesh.hasNormal = mesh.m_Normals?.Length > 0;
+            iMesh.hasUV = new bool[8];
+            for (int uv = 0; uv < 8; uv++)
+            {
+                iMesh.hasUV[uv] = mesh.GetUV(uv)?.Length > 0;
+            }
+            iMesh.hasTangent = mesh.m_Tangents != null && mesh.m_Tangents.Length == mesh.m_VertexCount * 4;
+            iMesh.hasColor = mesh.m_Colors?.Length > 0;
+
+            int firstFace = 0;
+            for (int i = 0; i < mesh.m_SubMeshes.Length; i++)
+            {
+                int numFaces = (int)mesh.m_SubMeshes[i].indexCount / 3;
+                var submesh = mesh.m_SubMeshes[i];
+                var iSubmesh = new ImportedSubmesh();
+
+                // Use real materials if provided, otherwise create placeholders
+                Material mat = null;
+                if (materials != null && i < materials.Length)
+                {
+                    mat = materials[i];
+                }
+                if (mat != null)
+                {
+                    var iMat = ConvertMaterial(mat);
+                    iSubmesh.Material = iMat.Name;
+                }
+                else
+                {
+                    iSubmesh.Material = $"{mesh.m_Name}_Material_{i}";
+                    // Create a placeholder ImportedMaterial so GltfExporter can find it
+                    if (ImportedHelpers.FindMaterial(iSubmesh.Material, MaterialList) == null)
+                    {
+                        var placeholderMat = new ImportedMaterial
+                        {
+                            Name = iSubmesh.Material,
+                            Diffuse = new Color(0.8f, 0.8f, 0.8f, 1),
+                            Ambient = new Color(0.2f, 0.2f, 0.2f, 1),
+                            Emissive = new Color(0, 0, 0, 1),
+                            Specular = new Color(0.2f, 0.2f, 0.2f, 1),
+                            Reflection = new Color(0, 0, 0, 1),
+                            Shininess = 20f,
+                            Transparency = 0f,
+                            Textures = new List<ImportedMaterialTexture>()
+                        };
+                        MaterialList.Add(placeholderMat);
+                    }
+                }
+                iSubmesh.BaseVertex = (int)submesh.firstVertex;
+
+                iSubmesh.FaceList = new List<ImportedFace>(numFaces);
+                var end = firstFace + numFaces;
+                for (int f = firstFace; f < end; f++)
+                {
+                    var face = new ImportedFace();
+                    face.VertexIndices = new int[3];
+                    face.VertexIndices[0] = (int)(mesh.m_Indices[f * 3 + 2] - submesh.firstVertex);
+                    face.VertexIndices[1] = (int)(mesh.m_Indices[f * 3 + 1] - submesh.firstVertex);
+                    face.VertexIndices[2] = (int)(mesh.m_Indices[f * 3] - submesh.firstVertex);
+                    iSubmesh.FaceList.Add(face);
+                }
+                firstFace = end;
+                iMesh.SubmeshList.Add(iSubmesh);
+            }
+
+            // Shared vertex list
+            iMesh.VertexList = new List<ImportedVertex>((int)mesh.m_VertexCount);
+            for (var j = 0; j < mesh.m_VertexCount; j++)
+            {
+                var iVertex = new ImportedVertex();
+                int c = 3;
+                if (mesh.m_Vertices.Length == mesh.m_VertexCount * 4) c = 4;
+                iVertex.Vertex = new Vector3(-mesh.m_Vertices[j * c], mesh.m_Vertices[j * c + 1], mesh.m_Vertices[j * c + 2]);
+
+                if (iMesh.hasNormal)
+                {
+                    if (mesh.m_Normals.Length == mesh.m_VertexCount * 3) c = 3;
+                    else if (mesh.m_Normals.Length == mesh.m_VertexCount * 4) c = 4;
+                    iVertex.Normal = new Vector3(-mesh.m_Normals[j * c], mesh.m_Normals[j * c + 1], mesh.m_Normals[j * c + 2]);
+                }
+
+                iVertex.UV = new float[8][];
+                for (int uv = 0; uv < 8; uv++)
+                {
+                    var m_UV = mesh.GetUV(uv);
+                    if (m_UV != null && m_UV.Length > 0)
+                    {
+                        c = 4;
+                        if (m_UV.Length == mesh.m_VertexCount * 2) c = 2;
+                        else if (m_UV.Length == mesh.m_VertexCount * 3) c = 3;
+                        iVertex.UV[uv] = new[] { m_UV[j * c], m_UV[j * c + 1] };
+                    }
+                }
+
+                if (iMesh.hasTangent)
+                {
+                    iVertex.Tangent = new Vector4(-mesh.m_Tangents[j * 4], mesh.m_Tangents[j * 4 + 1], mesh.m_Tangents[j * 4 + 2], mesh.m_Tangents[j * 4 + 3]);
+                }
+
+                if (iMesh.hasColor)
+                {
+                    if (mesh.m_Colors.Length == mesh.m_VertexCount * 3)
+                        iVertex.Color = new Color(mesh.m_Colors[j * 3], mesh.m_Colors[j * 3 + 1], mesh.m_Colors[j * 3 + 2], 1.0f);
+                    else
+                        iVertex.Color = new Color(mesh.m_Colors[j * 4], mesh.m_Colors[j * 4 + 1], mesh.m_Colors[j * 4 + 2], mesh.m_Colors[j * 4 + 3]);
+                }
+
+                if (mesh.m_Skin?.Length > 0 && j < mesh.m_Skin.Length)
+                {
+                    var inf = mesh.m_Skin[j];
+                    iVertex.BoneIndices = new int[4];
+                    iVertex.Weights = new float[4];
+                    for (var k = 0; k < 4; k++)
+                    {
+                        iVertex.BoneIndices[k] = inf.boneIndex[k];
+                        iVertex.Weights[k] = inf.weight[k];
+                    }
+                }
+                iMesh.VertexList.Add(iVertex);
+            }
+
+            // Build bone list from m_BoneNameHashes + m_BindPose
+            if (mesh.m_BindPose?.Length > 0 && mesh.m_BoneNameHashes?.Length > 0 &&
+                mesh.m_BindPose.Length == mesh.m_BoneNameHashes.Length)
+            {
+                var boneCount = mesh.m_BindPose.Length;
+                iMesh.BoneList = new List<ImportedBone>(boneCount);
+                for (int i = 0; i < boneCount; i++)
+                {
+                    var bone = new ImportedBone();
+                    var boneHash = mesh.m_BoneNameHashes[i];
+                    var path = GetPathFromHash(boneHash);
+                    bone.Path = FixBonePath(path);
+                    var convert = Matrix4x4.Scale(new Vector3(-1, 1, 1));
+                    bone.Matrix = convert * mesh.m_BindPose[i] * convert;
+                    iMesh.BoneList.Add(bone);
+                }
+                Logger.Info($"[MeshDirect] BoneList: {iMesh.BoneList.Count} bones, resolved: {iMesh.BoneList.Count(b => b.Path != null)}");
+            }
+
+            MeshList.Add(iMesh);
+        }
+
         private static Mesh GetMesh(Renderer meshR)
         {
             if (meshR is SkinnedMeshRenderer sMesh)
             {
+                Logger.Info($"[SkinDebug] GetMesh: SkinnedMeshRenderer m_PathID={meshR.m_PathID}, m_Mesh.m_FileID={sMesh.m_Mesh.m_FileID}, m_Mesh.m_PathID={sMesh.m_Mesh.m_PathID}");
                 if (sMesh.m_Mesh.TryGet(out var m_Mesh))
                 {
                     return m_Mesh;
                 }
+                Logger.Warning($"[SkinDebug] GetMesh: m_Mesh.TryGet failed. FileID={sMesh.m_Mesh.m_FileID}, PathID={sMesh.m_Mesh.m_PathID}");
             }
             else
             {
@@ -769,10 +1136,70 @@ namespace AssetStudio
 
         private void ConvertAnimations()
         {
+            CodmDenseIdleRelative.PathResolver = GetPathFromHash;
+            var idleRef = CodmDenseIdleRelative.FindIdleReference(animationClipHashSet);
+
+            // idle=auto (default): Fire* held pose when available (override continuity);
+            // otherwise WriteDefaults / prefab bind.
+            if (CodmDenseIdleRelative.IdleSourceAuto)
+            {
+                if (idleRef != null)
+                {
+                    CodmDenseIdleRelative.PreferWriteDefaultsIdle = false;
+                    CodmDenseIdleRelative.PreferHierarchyWeaponIdle = false;
+                    CodmDenseIdleRelative.PreferHierarchyArmIdle = false;
+                }
+                else
+                {
+                    CodmDenseIdleRelative.PreferWriteDefaultsIdle = true;
+                    Logger.Info("[AnimExport] idle=auto: no Fire* in selection → WriteDefaults (prefab bind)");
+                }
+            }
+
+            FillHierarchyWeaponIdle();
+            var idlePose = idleRef != null
+                ? CodmDenseIdleRelative.SampleIdlePose(idleRef, 0f)
+                : null;
+
+            foreach (var clip in animationClipHashSet)
+            {
+                if (CodmDenseIdleRelative.IsCodmHydratedDense(clip))
+                    CodmQuantizedDense.TryRewindowWithPaths(clip, GetPathFromHash, idlePose);
+            }
+
+            int baked = 0;
+            foreach (var clip in animationClipHashSet)
+            {
+                if (CodmDenseIdleRelative.Bake(clip, idleRef))
+                    baked++;
+            }
+            if (CodmBone01BrhCompensate.CompensateBone01)
+            {
+                foreach (var clip in animationClipHashSet)
+                    CodmBone01BrhCompensate.ApplyToClip(clip, GetPathFromHash);
+            }
+            CodmDenseIdleRelative.PathResolver = null;
+            CodmDenseIdleRelative.HierarchyWeaponIdle = null;
+            if (baked > 0)
+            {
+                string idlePolicy = CodmDenseIdleRelative.PreferWriteDefaultsIdle
+                    ? "WriteDefaults"
+                    : (idleRef != null ? "Fire*" : "const-prefix");
+                if (CodmDenseIdleRelative.IdleSourceAuto)
+                    idlePolicy = "auto→" + idlePolicy;
+                Logger.Warning(
+                    $"[AnimExport] CODM idle-relative bake: {baked} clip(s); " +
+                    $"idle={idlePolicy}; ref={(idleRef != null ? idleRef.m_Name : "(none)")}; " +
+                    $"WriteDefaults={CodmDenseIdleRelative.PreferWriteDefaultsIdle} " +
+                    $"PreferHierarchyWeaponIdle={CodmDenseIdleRelative.PreferHierarchyWeaponIdle} " +
+                    $"PreferHierarchyArmIdle={CodmDenseIdleRelative.PreferHierarchyArmIdle} " +
+                    $"Bone01invBRH={CodmBone01BrhCompensate.CompensateBone01}.");
+            }
+
             foreach (var animationClip in animationClipHashSet)
             {
                 var iAnim = new ImportedKeyframedAnimation();
-                var name = animationClip.m_Name;
+                var name = ShortAnimationClipName(animationClip.m_Name);
                 if (AnimationList.Exists(x => x.Name == name))
                 {
                     for (int i = 1; ; i++)
@@ -879,7 +1306,7 @@ namespace AssetStudio
                 {
                     var m_Clip = animationClip.m_MuscleClip.m_Clip;
                     var streamedFrames = m_Clip.m_StreamedClip.ReadData();
-                    var m_ClipBindingConstant = animationClip.m_ClipBindingConstant ?? m_Clip.ConvertValueArrayToGenericBinding();
+                    var m_ClipBindingConstant = ResolveClipBindings(animationClip, m_Clip);
                     for (int frameIndex = 1; frameIndex < streamedFrames.Count - 1; frameIndex++)
                     {
                         var frame = streamedFrames[frameIndex];
@@ -905,24 +1332,160 @@ namespace AssetStudio
                     {
                         var m_ConstantClip = m_Clip.m_ConstantClip;
                         var denseCount = m_Clip.m_DenseClip.m_CurveCount;
+                        // CODM quantized clips: ConstantClip is a rest-pose float array laid out from
+                        // curve index 0 (matches FireJump idle). Stock Unity puts constants after
+                        // streamed+dense — that wiring scores ~0.8 RMSE vs idle and warps export.
+                        bool codmPrefixConst = CodmDenseIdleRelative.IsCodmHydratedDense(animationClip);
+                        int denseStart = (int)streamCount;
+                        int denseEnd = denseStart + (int)denseCount;
                         var time2 = 0.0f;
                         for (int i = 0; i < 2; i++)
                         {
+                            // Equip must start off-idle: never write prefix-const over dense channels
+                            // (those keys were stomping frame-0 dense with idle rest).
                             for (int curveIndex = 0; curveIndex < m_ConstantClip.data.Length;)
                             {
-                                var index = streamCount + denseCount + curveIndex;
-                                ReadCurveData(iAnim, m_ClipBindingConstant, (int)index, time2, m_ConstantClip.data, 0, ref curveIndex);
+                                var index = codmPrefixConst
+                                    ? curveIndex
+                                    : (int)(streamCount + denseCount + curveIndex);
+                                if (codmPrefixConst && index >= denseStart && index < denseEnd)
+                                {
+                                    int skip = PeekBindingDim(m_ClipBindingConstant, index);
+                                    curveIndex += skip;
+                                    continue;
+                                }
+                                ReadCurveData(iAnim, m_ClipBindingConstant, index, time2, m_ConstantClip.data, 0, ref curveIndex);
                             }
                             time2 = animationClip.m_MuscleClip.m_StopTime;
                         }
+                        if (codmPrefixConst)
+                        {
+                            Logger.Warning(
+                                $"[AnimExport] CODM prefix ConstantClip on '{animationClip.m_Name}' " +
+                                $"(const={m_ConstantClip.data.Length}, stream={streamCount}, dense={denseCount}, " +
+                                $"skipDense=[{denseStart},{denseEnd}))");
+                        }
                     }
                 }
+
+                CopyAnimationEvents(animationClip, iAnim);
+                LogAnimationConvertStats(animationClip, iAnim);
+                if (CodmDenseIdleRelative.IsCodmHydratedDense(animationClip))
+                    CodmWeaponHandFollow.Apply(RootFrame, iAnim);
             }
+        }
+
+        private void LogAnimationConvertStats(AnimationClip clip, ImportedKeyframedAnimation iAnim)
+        {
+            var bindings = clip.m_ClipBindingConstant?.genericBindings;
+            var bindingCount = bindings?.Length ?? 0;
+            var muscle = clip.m_MuscleClip?.m_Clip;
+            var streamedCurves = muscle?.m_StreamedClip?.curveCount ?? 0;
+            var denseCurves = muscle?.m_DenseClip?.m_CurveCount ?? 0;
+            var constantCurves = muscle?.m_ConstantClip?.data?.Length ?? 0;
+            var valueArrayLen = muscle?.m_Binding?.m_ValueArray?.Length ?? 0;
+            var tracks = iAnim.TrackList ?? new List<ImportedAnimationKeyframedTrack>();
+            var nullPathTracks = 0;
+            var keyedTracks = 0;
+            var totalKeys = 0;
+            foreach (var t in tracks)
+            {
+                var keys = (t.Translations?.Count ?? 0) + (t.Rotations?.Count ?? 0) + (t.Scalings?.Count ?? 0);
+                if (keys == 0) continue;
+                totalKeys += keys;
+                if (string.IsNullOrEmpty(t.Path))
+                    nullPathTracks++;
+                else
+                    keyedTracks++;
+            }
+
+            var msg =
+                $"[AnimExport] '{iAnim.Name}' PathID={clip.m_PathID}: " +
+                $"bindings={bindingCount}, valueArray={valueArrayLen}, " +
+                $"streamedCurves={streamedCurves}, denseCurves={denseCurves}, constantCurves={constantCurves}, " +
+                $"tracks={tracks.Count}, keyedOnBones={keyedTracks}, keyedOnNullPath={nullPathTracks}, totalKeys={totalKeys}";
+
+            if (totalKeys == 0 || keyedTracks == 0)
+            {
+                var hint = bindingCount == 0
+                    ? "No curve bindings mapped (ClipBindingConstant empty and ValueArray rebuild failed/empty)."
+                    : "Bindings exist but paths didn't resolve onto this Animator hierarchy.";
+                Logger.Warning(msg + " — " + hint);
+            }
+            else
+            {
+                Logger.Info(msg);
+            }
+        }
+
+        private static void CopyAnimationEvents(AnimationClip clip, ImportedKeyframedAnimation iAnim)
+        {
+            if (clip?.m_Events == null || clip.m_Events.Length == 0)
+                return;
+
+            iAnim.Events = new List<ImportedAnimationEvent>(clip.m_Events.Length);
+            foreach (var e in clip.m_Events)
+            {
+                var name = e.functionName ?? "";
+                if (!string.IsNullOrEmpty(e.data))
+                    name = string.IsNullOrEmpty(name) ? e.data : name + ":" + e.data;
+                if (string.IsNullOrEmpty(name))
+                    name = "event";
+                iAnim.Events.Add(new ImportedAnimationEvent { time = e.time, Name = name });
+            }
+        }
+
+        private static AnimationClipBindingConstant ResolveClipBindings(AnimationClip animationClip, Clip m_Clip)
+        {
+            var bindings = animationClip.m_ClipBindingConstant;
+            if (bindings?.genericBindings != null && bindings.genericBindings.Length > 0)
+                return bindings;
+
+            // CODM: binding sync may leave an empty constant; rebuild from muscle ValueArray when present.
+            var rebuilt = m_Clip?.ConvertValueArrayToGenericBinding();
+            if (rebuilt?.genericBindings != null && rebuilt.genericBindings.Length > 0)
+                return rebuilt;
+
+            return bindings ?? new AnimationClipBindingConstant
+            {
+                genericBindings = Array.Empty<GenericBinding>(),
+                pptrCurveMapping = Array.Empty<PPtr<Object>>()
+            };
         }
 
         private void ReadCurveData(ImportedKeyframedAnimation iAnim, AnimationClipBindingConstant m_ClipBindingConstant, int index, float time, float[] data, int offset, ref int curveIndex)
         {
-            var binding = m_ClipBindingConstant.FindBinding(index);
+            var binding = m_ClipBindingConstant?.FindBinding(index);
+            if (binding == null)
+            {
+                // Unknown/missing binding — skip one float so we don't NRE or stall the loop.
+                curveIndex++;
+                return;
+            }
+
+            int need = 1;
+            if (binding.typeID == ClassIDType.Transform)
+            {
+                switch (binding.attribute)
+                {
+                    case 1:
+                    case 3:
+                    case 4:
+                        need = 3;
+                        break;
+                    case 2:
+                        need = 4;
+                        break;
+                }
+            }
+
+            if (data == null || offset < 0 || curveIndex < 0 || offset + curveIndex + need > data.Length)
+            {
+                // Misaligned streamed/dense/constant split — skip rather than crash export.
+                curveIndex += need;
+                return;
+            }
+
             if (binding.typeID == ClassIDType.SkinnedMeshRenderer) //BlendShape
             {
                 var channelName = GetChannelNameFromHash(binding.attribute);
@@ -999,6 +1562,25 @@ namespace AssetStudio
             }
         }
 
+        private static int PeekBindingDim(AnimationClipBindingConstant bindings, int index)
+        {
+            var binding = bindings?.FindBinding(index);
+            if (binding == null) return 1;
+            if (binding.typeID == ClassIDType.Transform)
+            {
+                switch (binding.attribute)
+                {
+                    case 1:
+                    case 3:
+                    case 4:
+                        return 3;
+                    case 2:
+                        return 4;
+                }
+            }
+            return 1;
+        }
+
         private string GetPathFromHash(uint hash)
         {
             bonePathHash.TryGetValue(hash, out var boneName);
@@ -1011,6 +1593,104 @@ namespace AssetStudio
                 boneName = "unknown " + hash;
             }
             return boneName;
+        }
+
+        private void FillHierarchyWeaponIdle()
+        {
+            bool wantAll = CodmDenseIdleRelative.PreferWriteDefaultsIdle;
+            bool wantWeapon = CodmDenseIdleRelative.PreferHierarchyWeaponIdle || wantAll;
+            bool wantArm = CodmDenseIdleRelative.PreferHierarchyArmIdle || wantAll;
+            if (!wantAll && !wantWeapon && !wantArm)
+            {
+                CodmDenseIdleRelative.HierarchyWeaponIdle = null;
+                return;
+            }
+
+            var dest = new Dictionary<(uint path, uint attr), float[]>();
+            int weaponN = 0, armN = 0, otherN = 0;
+            foreach (var kv in transformDictionary)
+            {
+                var t = kv.Key;
+                if (t == null || !t.m_GameObject.TryGet(out var go) || go == null)
+                    continue;
+                var leaf = go.m_Name;
+                if (string.IsNullOrEmpty(leaf))
+                    continue;
+
+                bool isWeapon = leaf.Equals("Bone01", StringComparison.OrdinalIgnoreCase)
+                    || leaf.Equals("Bone_RightHand", StringComparison.OrdinalIgnoreCase)
+                    || leaf.Equals("Bone_LeftHand", StringComparison.OrdinalIgnoreCase);
+                bool isArm = IsArmOrFingerLeaf(leaf);
+
+                if (!wantAll)
+                {
+                    if (isWeapon && !wantWeapon) continue;
+                    if (!isWeapon && wantArm && !isArm) continue;
+                    if (!isWeapon && !wantArm) continue;
+                }
+
+                if (isWeapon) weaponN++;
+                else if (isArm) armN++;
+                else otherN++;
+
+                var pathName = GetTransformPathByFather(t);
+                var p = new[] { t.m_LocalPosition.X, t.m_LocalPosition.Y, t.m_LocalPosition.Z };
+                var r = new[] { t.m_LocalRotation.X, t.m_LocalRotation.Y, t.m_LocalRotation.Z, t.m_LocalRotation.W };
+                AddWeaponIdlePathHashes(pathName, dest, 1u, p);
+                AddWeaponIdlePathHashes(pathName, dest, 2u, r);
+            }
+
+            CodmDenseIdleRelative.HierarchyWeaponIdle = dest;
+            if (dest.Count > 0)
+            {
+                Logger.Info($"[AnimExport] hierarchy idle keys={dest.Count} " +
+                            $"(writeDefaults={wantAll}, weaponLeaves={wantWeapon}/{weaponN}, " +
+                            $"arms={wantArm}/{armN}, other={otherN})");
+            }
+        }
+
+        private static bool IsArmOrFingerLeaf(string leaf)
+        {
+            if (string.IsNullOrEmpty(leaf)) return false;
+            // Skinned arm chain (not Bone_*Hand weapon attach)
+            if (leaf.StartsWith("b_", StringComparison.OrdinalIgnoreCase))
+            {
+                return leaf.IndexOf("Hand", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Arm", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Clav", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Thumb", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Index", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Middle", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Ring", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Pinky", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Finger", StringComparison.OrdinalIgnoreCase) >= 0
+                    || leaf.IndexOf("Wrist", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            return leaf.IndexOf("Shoulder", StringComparison.OrdinalIgnoreCase) >= 0
+                || leaf.IndexOf("Elbow", StringComparison.OrdinalIgnoreCase) >= 0
+                || leaf.IndexOf("Clavicle", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void AddWeaponIdlePathHashes(
+            string pathName,
+            Dictionary<(uint path, uint attr), float[]> dest,
+            uint attr,
+            float[] values)
+        {
+            if (string.IsNullOrEmpty(pathName) || values == null)
+                return;
+            var name = pathName;
+            while (true)
+            {
+                var crc = new SevenZip.CRC();
+                var bytes = Encoding.UTF8.GetBytes(name);
+                crc.Update(bytes, 0, (uint)bytes.Length);
+                dest[(crc.GetDigest(), attr)] = values;
+                int index = name.IndexOf("/", StringComparison.Ordinal);
+                if (index < 0)
+                    break;
+                name = name.Substring(index + 1);
+            }
         }
 
         private void CreateBonePathHash(Transform m_Transform)
@@ -1106,6 +1786,29 @@ namespace AssetStudio
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// glTF/Blender action label. Blender often appends the armature object name, so keep
+        /// the clip side short: MeleeWeapon_…_M_Idle → Idle.
+        /// </summary>
+        public static string ShortAnimationClipName(string clipName)
+        {
+            if (string.IsNullOrEmpty(clipName))
+                return "Animation";
+            // Prefer suffix after "_M_" (CODM / IW style motion names).
+            int m = clipName.LastIndexOf("_M_", StringComparison.Ordinal);
+            if (m >= 0 && m + 3 < clipName.Length)
+            {
+                var suffix = clipName.Substring(m + 3);
+                if (!string.IsNullOrEmpty(suffix))
+                    return suffix;
+            }
+            // Fallback: leaf after last path-like separator or final underscore segment.
+            int slash = clipName.LastIndexOf('/');
+            if (slash >= 0 && slash + 1 < clipName.Length)
+                return clipName.Substring(slash + 1);
+            return clipName;
         }
     }
 }

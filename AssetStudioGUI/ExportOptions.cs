@@ -1,4 +1,4 @@
-﻿using AssetStudio;
+using AssetStudio;
 using System;
 using System.Windows.Forms;
 
@@ -35,6 +35,8 @@ namespace AssetStudioGUI
             scaleFactor.Value = Properties.Settings.Default.scaleFactor;
             fbxVersion.SelectedIndex = Properties.Settings.Default.fbxVersion;
             fbxFormat.SelectedIndex = Properties.Settings.Default.fbxFormat;
+            exportCast.Checked = Properties.Settings.Default.exportCast;
+            exportGlb.Checked = Properties.Settings.Default.exportGlb;
 
         }
 
@@ -65,6 +67,8 @@ namespace AssetStudioGUI
             Properties.Settings.Default.scaleFactor = scaleFactor.Value;
             Properties.Settings.Default.fbxVersion = fbxVersion.SelectedIndex;
             Properties.Settings.Default.fbxFormat = fbxFormat.SelectedIndex;
+            Properties.Settings.Default.exportCast = exportCast.Checked;
+            Properties.Settings.Default.exportGlb = exportGlb.Checked;
             Properties.Settings.Default.Save();
             DialogResult = DialogResult.OK;
             Close();

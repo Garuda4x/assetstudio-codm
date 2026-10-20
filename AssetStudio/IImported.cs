@@ -230,6 +230,8 @@ namespace AssetStudio
         public string Name { get; set; }
         public float SampleRate { get; set; }
         public List<ImportedAnimationKeyframedTrack> TrackList { get; set; }
+        /// <summary>Unity AnimationEvents (notetrack-like notifies).</summary>
+        public List<ImportedAnimationEvent> Events { get; set; }
 
         public ImportedAnimationKeyframedTrack FindTrack(string path)
         {
@@ -242,6 +244,12 @@ namespace AssetStudio
 
             return track;
         }
+    }
+
+    public class ImportedAnimationEvent
+    {
+        public float time;
+        public string Name;
     }
 
     public class ImportedAnimationKeyframedTrack

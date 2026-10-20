@@ -1,4 +1,4 @@
-﻿namespace AssetStudioGUI
+namespace AssetStudioGUI
 {
     partial class ExportOptions
     {
@@ -33,6 +33,8 @@
             this.Cancel = new System.Windows.Forms.Button();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.openAfterExport = new System.Windows.Forms.CheckBox();
+            this.exportCast = new System.Windows.Forms.CheckBox();
+            this.exportGlb = new System.Windows.Forms.CheckBox();
             this.restoreExtensionName = new System.Windows.Forms.CheckBox();
             this.assetGroupOptions = new System.Windows.Forms.ComboBox();
             this.label6 = new System.Windows.Forms.Label();
@@ -94,6 +96,8 @@
             // groupBox1
             // 
             this.groupBox1.AutoSize = true;
+            this.groupBox1.Controls.Add(this.exportGlb);
+            this.groupBox1.Controls.Add(this.exportCast);
             this.groupBox1.Controls.Add(this.openAfterExport);
             this.groupBox1.Controls.Add(this.restoreExtensionName);
             this.groupBox1.Controls.Add(this.assetGroupOptions);
@@ -103,7 +107,7 @@
             this.groupBox1.Controls.Add(this.converttexture);
             this.groupBox1.Location = new System.Drawing.Point(12, 12);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(232, 334);
+            this.groupBox1.Size = new System.Drawing.Size(232, 380);
             this.groupBox1.TabIndex = 9;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Export";
@@ -119,6 +123,28 @@
             this.openAfterExport.TabIndex = 10;
             this.openAfterExport.Text = "Open folder after export";
             this.openAfterExport.UseVisualStyleBackColor = true;
+            // 
+            // exportCast
+            // 
+            this.exportCast.AutoSize = true;
+            this.exportCast.Location = new System.Drawing.Point(6, 182);
+            this.exportCast.Name = "exportCast";
+            this.exportCast.Size = new System.Drawing.Size(210, 16);
+            this.exportCast.TabIndex = 11;
+            this.exportCast.Text = "Export Cast (.cast model + anims)";
+            this.exportCast.UseVisualStyleBackColor = true;
+            // 
+            // exportGlb
+            // 
+            this.exportGlb.AutoSize = true;
+            this.exportGlb.Checked = true;
+            this.exportGlb.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.exportGlb.Location = new System.Drawing.Point(6, 204);
+            this.exportGlb.Name = "exportGlb";
+            this.exportGlb.Size = new System.Drawing.Size(168, 16);
+            this.exportGlb.TabIndex = 12;
+            this.exportGlb.Text = "Export glTF Binary (.glb)";
+            this.exportGlb.UseVisualStyleBackColor = true;
             // 
             // restoreExtensionName
             // 
@@ -529,6 +555,8 @@
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.CheckBox restoreExtensionName;
         private System.Windows.Forms.CheckBox openAfterExport;
+        private System.Windows.Forms.CheckBox exportCast;
+        private System.Windows.Forms.CheckBox exportGlb;
         private System.Windows.Forms.CheckBox exportAllUvsAsDiffuseMaps;
         private System.Windows.Forms.ToolTip exportUvsTooltip;
     }
