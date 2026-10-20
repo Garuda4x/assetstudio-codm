@@ -1,7 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
+using static AssetStudio.AnimatorControllerRead;
 
 namespace AssetStudio
 {
@@ -123,7 +125,7 @@ namespace AssetStudio
         {
             var version = reader.version;
 
-            int numConditions = reader.ReadInt32();
+            int numConditions = ReadBoundedCount(reader, 4096, "TransitionConstant.conditions");
             m_ConditionConstantArray = new ConditionConstant[numConditions];
             for (int i = 0; i < numConditions; i++)
             {
@@ -345,7 +347,7 @@ namespace AssetStudio
         {
             var version = reader.version;
 
-            int numTransistions = reader.ReadInt32();
+            int numTransistions = ReadBoundedCount(reader, 4096, "StateConstant.transitions");
             m_TransitionConstantArray = new TransitionConstant[numTransistions];
             for (int i = 0; i < numTransistions; i++)
             {
@@ -356,7 +358,7 @@ namespace AssetStudio
 
             if (version[0] < 5 || (version[0] == 5 && version[1] < 2)) //5.2 down
             {
-                int numInfos = reader.ReadInt32();
+                int numInfos = ReadBoundedCount(reader, 4096, "StateConstant.leafInfos");
                 m_LeafInfoArray = new LeafInfoConstant[numInfos];
                 for (int i = 0; i < numInfos; i++)
                 {
@@ -364,7 +366,7 @@ namespace AssetStudio
                 }
             }
 
-            int numBlends = reader.ReadInt32();
+            int numBlends = ReadBoundedCount(reader, 4096, "StateConstant.blendTrees");
             m_BlendTreeConstantArray = new BlendTreeConstant[numBlends];
             for (int i = 0; i < numBlends; i++)
             {
@@ -441,7 +443,7 @@ namespace AssetStudio
 
         public SelectorStateConstant(ObjectReader reader)
         {
-            int numTransitions = reader.ReadInt32();
+            int numTransitions = ReadBoundedCount(reader, 4096, "SelectorStateConstant.transitions");
             m_TransitionConstantArray = new SelectorTransitionConstant[numTransitions];
             for (int i = 0; i < numTransitions; i++)
             {
@@ -466,14 +468,14 @@ namespace AssetStudio
         {
             var version = reader.version;
 
-            int numStates = reader.ReadInt32();
+            int numStates = ReadBoundedCount(reader, 8192, "StateMachineConstant.states");
             m_StateConstantArray = new StateConstant[numStates];
             for (int i = 0; i < numStates; i++)
             {
                 m_StateConstantArray[i] = new StateConstant(reader);
             }
 
-            int numAnyStates = reader.ReadInt32();
+            int numAnyStates = ReadBoundedCount(reader, 4096, "StateMachineConstant.anyState");
             m_AnyStateTransitionConstantArray = new TransitionConstant[numAnyStates];
             for (int i = 0; i < numAnyStates; i++)
             {
@@ -482,7 +484,7 @@ namespace AssetStudio
 
             if (version[0] >= 5) //5.0 and up
             {
-                int numSelectors = reader.ReadInt32();
+                int numSelectors = ReadBoundedCount(reader, 4096, "StateMachineConstant.selectors");
                 m_SelectorStateConstantArray = new SelectorStateConstant[numSelectors];
                 for (int i = 0; i < numSelectors; i++)
                 {
@@ -559,14 +561,14 @@ namespace AssetStudio
 
         public ControllerConstant(ObjectReader reader)
         {
-            int numLayers = reader.ReadInt32();
+            int numLayers = ReadBoundedCount(reader, 256, "ControllerConstant.layers");
             m_LayerArray = new LayerConstant[numLayers];
             for (int i = 0; i < numLayers; i++)
             {
                 m_LayerArray[i] = new LayerConstant(reader);
             }
 
-            int numStates = reader.ReadInt32();
+            int numStates = ReadBoundedCount(reader, 256, "ControllerConstant.stateMachines");
             m_StateMachineArray = new StateMachineConstant[numStates];
             for (int i = 0; i < numStates; i++)
             {
@@ -587,19 +589,34 @@ namespace AssetStudio
             var m_ControllerSize = reader.ReadUInt32();
             var m_Controller = new ControllerConstant(reader);
 
-            int tosSize = reader.ReadInt32();
+            int tosSize = ReadBoundedCount(reader, 100000, "AnimatorController.TOS");
             var m_TOS = new KeyValuePair<uint, string>[tosSize];
             for (int i = 0; i < tosSize; i++)
             {
                 m_TOS[i] = new KeyValuePair<uint, string>(reader.ReadUInt32(), reader.ReadAlignedString());
             }
 
-            int numClips = reader.ReadInt32();
+            int numClips = ReadBoundedCount(reader, 100000, "AnimatorController.clips");
             m_AnimationClips = new PPtr<AnimationClip>[numClips];
             for (int i = 0; i < numClips; i++)
             {
                 m_AnimationClips[i] = new PPtr<AnimationClip>(reader);
             }
+        }
+    }
+
+    internal static class AnimatorControllerRead
+    {
+        internal static int ReadBoundedCount(ObjectReader reader, int max, string what)
+        {
+            int n = reader.ReadInt32();
+            if (n < 0 || n > max || n > reader.Remaining)
+            {
+                throw new InvalidDataException(
+                    $"Absurd {what} count {n} (remaining={reader.Remaining}). " +
+                    "Likely CODM AnimatorController layout ≠ stock Unity 5.6.");
+            }
+            return n;
         }
     }
 }

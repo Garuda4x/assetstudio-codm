@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -42,6 +42,11 @@ namespace AssetStudio
         {
             var version = reader.version;
             int numCurves = reader.ReadInt32();
+            // Wrong Unity version → misaligned stream → absurd counts → OutOfMemoryException
+            if (numCurves < 0 || numCurves > reader.Remaining)
+            {
+                throw new InvalidDataException($"Absurd AnimationCurve count {numCurves} (remaining={reader.Remaining}, version={string.Join(".", version)}). Likely wrong/obfuscated Unity version — set Options → Specify Unity version.");
+            }
             m_Curve = new Keyframe<T>[numCurves];
             for (int i = 0; i < numCurves; i++)
             {
@@ -432,6 +437,10 @@ namespace AssetStudio
             m_LookAtWeight = reader.ReadVector4();
 
             int numGoals = reader.ReadInt32();
+            if (numGoals < 0 || numGoals > 64)
+            {
+                throw new InvalidDataException($"Absurd HumanGoal count {numGoals}");
+            }
             m_GoalArray = new HumanGoal[numGoals];
             for (int i = 0; i < numGoals; i++)
             {
@@ -441,11 +450,24 @@ namespace AssetStudio
             m_LeftHandPose = new HandPose(reader);
             m_RightHandPose = new HandPose(reader);
 
-            m_DoFArray = reader.ReadSingleArray();
+            int numDof = reader.ReadInt32();
+            if (numDof < 0 || numDof > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd HumanPose DoF count {numDof} (remaining={reader.Remaining})");
+            }
+            m_DoFArray = new float[numDof];
+            for (int i = 0; i < numDof; i++)
+            {
+                m_DoFArray[i] = reader.ReadSingle();
+            }
 
             if (version[0] > 5 || (version[0] == 5 && version[1] >= 2))//5.2 and up
             {
                 int numTDof = reader.ReadInt32();
+                if (numTDof < 0 || numTDof > 1024)
+                {
+                    throw new InvalidDataException($"Absurd HumanPose TDoF count {numTDof}");
+                }
                 m_TDoFArray = new Vector3[numTDof];
                 for (int i = 0; i < numTDof; i++)
                 {
@@ -462,7 +484,16 @@ namespace AssetStudio
 
         public StreamedClip(ObjectReader reader)
         {
-            data = reader.ReadUInt32Array();
+            int numData = reader.ReadInt32();
+            if (numData < 0 || numData > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd StreamedClip data count {numData} (remaining={reader.Remaining})");
+            }
+            data = new uint[numData];
+            for (int i = 0; i < numData; i++)
+            {
+                data[i] = reader.ReadUInt32();
+            }
             curveCount = reader.ReadUInt32();
         }
 
@@ -511,6 +542,12 @@ namespace AssetStudio
                 time = reader.ReadSingle();
 
                 int numKeys = reader.ReadInt32();
+                var remaining = reader.BaseStream.Length - reader.BaseStream.Position;
+                // StreamedCurveKey ≈ 4 + 16 bytes
+                if (numKeys < 0 || numKeys > remaining / 16)
+                {
+                    throw new InvalidDataException($"Absurd StreamedFrame key count {numKeys} (remaining={remaining})");
+                }
                 keyList = new StreamedCurveKey[numKeys];
                 for (int i = 0; i < numKeys; i++)
                 {
@@ -560,6 +597,28 @@ namespace AssetStudio
         public float m_SampleRate;
         public float m_BeginTime;
         public float[] m_SampleArray;
+        /// <summary>Unsanitized CODM quantized samples (set by CodmQuantizedDense); used to rewindow at export.</summary>
+        public float[] m_CodmRawSampleArray;
+        /// <summary>Bytes after last quant block (still undecoded). Diagnostics only.</summary>
+        public byte[] m_CodmTrailer;
+        /// <summary>Per-block channel counts from CODM quant decode (shared min/max within each block).</summary>
+        public int[] m_CodmBlockChannelCounts;
+        /// <summary>Per-block dequant min (parallel to channel counts).</summary>
+        public float[] m_CodmBlockMins;
+        /// <summary>Per-block dequant max.</summary>
+        public float[] m_CodmBlockMaxs;
+        /// <summary>Per-block packed size field (nb) from CODM quant header.</summary>
+        public uint[] m_CodmBlockPackedSizes;
+        /// <summary>Per-block flag field (expected 3).</summary>
+        public uint[] m_CodmBlockFlags;
+        /// <summary>
+        /// Span multiplier applied to 3ch blocks at hydrate (1 = full header span, 0.5 = half).
+        /// Used to re-apply / undo without reloading the pak.
+        /// </summary>
+        public float m_Codm3chSpanFactor = 1f;
+        public int m_CodmPrefixLength;
+        public int m_CodmPayloadOffset;
+        public int m_CodmBlocksEnd;
 
         public DenseClip(ObjectReader reader)
         {
@@ -567,7 +626,16 @@ namespace AssetStudio
             m_CurveCount = reader.ReadUInt32();
             m_SampleRate = reader.ReadSingle();
             m_BeginTime = reader.ReadSingle();
-            m_SampleArray = reader.ReadSingleArray();
+            int numSamples = reader.ReadInt32();
+            if (numSamples < 0 || numSamples > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd DenseClip sample count {numSamples} (remaining={reader.Remaining})");
+            }
+            m_SampleArray = new float[numSamples];
+            for (int i = 0; i < numSamples; i++)
+            {
+                m_SampleArray[i] = reader.ReadSingle();
+            }
         }
     }
 
@@ -577,7 +645,16 @@ namespace AssetStudio
 
         public ConstantClip(ObjectReader reader)
         {
-            data = reader.ReadSingleArray();
+            int numData = reader.ReadInt32();
+            if (numData < 0 || numData > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd ConstantClip data count {numData} (remaining={reader.Remaining})");
+            }
+            data = new float[numData];
+            for (int i = 0; i < numData; i++)
+            {
+                data[i] = reader.ReadSingle();
+            }
         }
     }
 
@@ -608,6 +685,10 @@ namespace AssetStudio
         public ValueArrayConstant(ObjectReader reader)
         {
             int numVals = reader.ReadInt32();
+            if (numVals < 0 || numVals > reader.Remaining / 12)
+            {
+                throw new InvalidDataException($"Absurd ValueArrayConstant count {numVals} (remaining={reader.Remaining})");
+            }
             m_ValueArray = new ValueConstant[numVals];
             for (int i = 0; i < numVals; i++)
             {
@@ -643,6 +724,12 @@ namespace AssetStudio
             var bindings = new AnimationClipBindingConstant();
             var genericBindings = new List<GenericBinding>();
             var values = m_Binding;
+            if (values?.m_ValueArray == null || values.m_ValueArray.Length == 0)
+            {
+                bindings.genericBindings = Array.Empty<GenericBinding>();
+                bindings.pptrCurveMapping = Array.Empty<PPtr<Object>>();
+                return bindings;
+            }
             for (int i = 0; i < values.m_ValueArray.Length;)
             {
                 var curveID = values.m_ValueArray[i].m_ID;
@@ -679,6 +766,7 @@ namespace AssetStudio
                 }
             }
             bindings.genericBindings = genericBindings.ToArray();
+            bindings.pptrCurveMapping = Array.Empty<PPtr<Object>>();
             return bindings;
         }
     }
@@ -730,20 +818,33 @@ namespace AssetStudio
         public ClipMuscleConstant(ObjectReader reader)
         {
             var version = reader.version;
-            m_DeltaPose = new HumanPose(reader);
-            m_StartX = new xform(reader);
-            if (version[0] > 5 || (version[0] == 5 && version[1] >= 5))//5.5 and up
+            // CoD Mobile's modified Unity 5.6 replaces the full HumanPose + foot xforms
+            // with two xforms (delta root + start), then average speed + Clip.
+            // Stock HumanPose reads look-at/goal arrays and OOMs on this data.
+            if (IsCodmMuscleLayout(version))
             {
-                m_StopX = new xform(reader);
+                Logger.Info("[AnimClip] Using CoD Mobile ClipMuscleConstant layout (2 xforms, no HumanPose)");
+                m_StartX = new xform(reader); // delta/root pose (not a full HumanPose)
+                m_StopX = new xform(reader);  // start X (reusing field)
+                m_AverageSpeed = reader.ReadVector3();
             }
-            m_LeftFootStartX = new xform(reader);
-            m_RightFootStartX = new xform(reader);
-            if (version[0] < 5)//5.0 down
+            else
             {
-                m_MotionStartX = new xform(reader);
-                m_MotionStopX = new xform(reader);
+                m_DeltaPose = new HumanPose(reader);
+                m_StartX = new xform(reader);
+                if (version[0] > 5 || (version[0] == 5 && version[1] >= 5))//5.5 and up
+                {
+                    m_StopX = new xform(reader);
+                }
+                m_LeftFootStartX = new xform(reader);
+                m_RightFootStartX = new xform(reader);
+                if (version[0] < 5)//5.0 down
+                {
+                    m_MotionStartX = new xform(reader);
+                    m_MotionStopX = new xform(reader);
+                }
+                m_AverageSpeed = version[0] > 5 || (version[0] == 5 && version[1] >= 4) ? reader.ReadVector3() : (Vector3)reader.ReadVector4();//5.4 and up
             }
-            m_AverageSpeed = version[0] > 5 || (version[0] == 5 && version[1] >= 4) ? reader.ReadVector3() : (Vector3)reader.ReadVector4();//5.4 and up
             m_Clip = new Clip(reader);
             m_StartTime = reader.ReadSingle();
             m_StopTime = reader.ReadSingle();
@@ -752,12 +853,25 @@ namespace AssetStudio
             m_CycleOffset = reader.ReadSingle();
             m_AverageAngularSpeed = reader.ReadSingle();
 
-            m_IndexArray = reader.ReadInt32Array();
+            int numIndices = reader.ReadInt32();
+            if (numIndices < 0 || numIndices > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd IndexArray count {numIndices} (remaining={reader.Remaining})");
+            }
+            m_IndexArray = new int[numIndices];
+            for (int i = 0; i < numIndices; i++)
+            {
+                m_IndexArray[i] = reader.ReadInt32();
+            }
             if (version[0] < 4 || (version[0] == 4 && version[1] < 3)) //4.3 down
             {
                 var m_AdditionalCurveIndexArray = reader.ReadInt32Array();
             }
             int numDeltas = reader.ReadInt32();
+            if (numDeltas < 0 || numDeltas > reader.Remaining / 8)
+            {
+                throw new InvalidDataException($"Absurd ValueArrayDelta count {numDeltas} (remaining={reader.Remaining})");
+            }
             m_ValueArrayDelta = new ValueDelta[numDeltas];
             for (int i = 0; i < numDeltas; i++)
             {
@@ -765,7 +879,7 @@ namespace AssetStudio
             }
             if (version[0] > 5 || (version[0] == 5 && version[1] >= 3))//5.3 and up
             {
-                m_ValueArrayReferencePose = reader.ReadSingleArray();
+                m_ValueArrayReferencePose = ReadBoundedSingleArray(reader);
             }
 
             m_Mirror = reader.ReadBoolean();
@@ -786,6 +900,34 @@ namespace AssetStudio
             m_KeepOriginalPositionXZ = reader.ReadBoolean();
             m_HeightFromFeet = reader.ReadBoolean();
             reader.AlignStream();
+
+            // CODM trailing times often read as 0; derive a usable stop time from dense clip.
+            if (IsCodmMuscleLayout(version) && m_StopTime <= 0f && m_Clip?.m_DenseClip != null
+                && m_Clip.m_DenseClip.m_FrameCount > 0 && m_Clip.m_DenseClip.m_SampleRate > 0f)
+            {
+                m_StopTime = m_Clip.m_DenseClip.m_FrameCount / m_Clip.m_DenseClip.m_SampleRate;
+            }
+        }
+
+        private static bool IsCodmMuscleLayout(int[] version)
+        {
+            // This fork targets CoD Mobile's modified Unity 5.6 engine.
+            return version != null && version.Length > 1 && version[0] == 5 && version[1] >= 6;
+        }
+
+        private static float[] ReadBoundedSingleArray(ObjectReader reader)
+        {
+            int length = reader.ReadInt32();
+            if (length < 0 || length > reader.Remaining / 4)
+            {
+                throw new InvalidDataException($"Absurd float array length {length} (remaining={reader.Remaining})");
+            }
+            var result = new float[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = reader.ReadSingle();
+            }
+            return result;
         }
     }
 
@@ -835,6 +977,10 @@ namespace AssetStudio
         public AnimationClipBindingConstant(ObjectReader reader)
         {
             int numBindings = reader.ReadInt32();
+            if (numBindings < 0 || numBindings > 4096)
+            {
+                throw new InvalidDataException($"Absurd GenericBinding count {numBindings}");
+            }
             genericBindings = new GenericBinding[numBindings];
             for (int i = 0; i < numBindings; i++)
             {
@@ -842,6 +988,10 @@ namespace AssetStudio
             }
 
             int numMappings = reader.ReadInt32();
+            if (numMappings < 0 || numMappings > 4096 || numMappings > reader.Remaining / 8)
+            {
+                throw new InvalidDataException($"Absurd pptrCurveMapping count {numMappings} (remaining={reader.Remaining})");
+            }
             pptrCurveMapping = new PPtr<Object>[numMappings];
             for (int i = 0; i < numMappings; i++)
             {
@@ -1027,12 +1177,74 @@ namespace AssetStudio
             if (version[0] >= 4)//4.0 and up
             {
                 m_MuscleClipSize = reader.ReadUInt32();
+                var muscleDataStart = reader.Position;
                 m_MuscleClip = new ClipMuscleConstant(reader);
+                var afterMuscleStructural = reader.Position;
+
+                if (version[0] > 4 || (version[0] == 4 && version[1] >= 3)) //4.3 and up
+                {
+                    if (version[0] == 5 && version[1] >= 6)
+                    {
+                        var muscleHasCurves = MuscleHasCurveData(m_MuscleClip);
+                        var bySizePos = muscleDataStart + m_MuscleClipSize;
+                        var objectEnd = reader.byteStart + reader.byteSize;
+                        var synced = false;
+                        if (m_MuscleClipSize > 0 && bySizePos >= afterMuscleStructural && bySizePos + 8 <= objectEnd)
+                        {
+                            reader.Position = bySizePos;
+                            if (TryPeekBindingList(reader, out _))
+                            {
+                                Logger.Info($"[AnimClip] CODM binding sync via muscleClipSize at 0x{bySizePos - reader.byteStart:X}");
+                                synced = true;
+                            }
+                        }
+                        if (!synced)
+                        {
+                            reader.Position = afterMuscleStructural;
+                            if (!TrySeekToAnimationClipBindingConstant(reader, allowEmpty: !muscleHasCurves))
+                            {
+                                Logger.Warning(
+                                    $"[AnimClip] CODM binding sync missed (PathID={reader.m_PathID}, muscleCurves={muscleHasCurves}); " +
+                                    "rebuilding ClipBindingConstant from muscle ValueArray if present");
+                                m_ClipBindingConstant = RebuildBindingsOrEmpty(m_MuscleClip);
+                                TrySeekToAnimationEvents(reader);
+                                goto AfterBindings;
+                            }
+                        }
+                    }
+                    var bindingPos = reader.Position;
+                    m_ClipBindingConstant = new AnimationClipBindingConstant(reader);
+                    if (m_ClipBindingConstant.genericBindings == null || m_ClipBindingConstant.genericBindings.Length == 0)
+                    {
+                        var rebuilt = RebuildBindingsOrEmpty(m_MuscleClip);
+                        if (rebuilt.genericBindings != null && rebuilt.genericBindings.Length > 0)
+                        {
+                            Logger.Warning(
+                                $"[AnimClip] ClipBindingConstant empty after sync (PathID={reader.m_PathID}); " +
+                                $"using {rebuilt.genericBindings.Length} bindings from muscle ValueArray");
+                            m_ClipBindingConstant = rebuilt;
+                        }
+                        else if (MuscleHasCurveData(m_MuscleClip))
+                        {
+                            Logger.Warning(
+                                $"[AnimClip] PathID={reader.m_PathID}: muscle has curve data but 0 bindings " +
+                                $"(streamed={m_MuscleClip.m_Clip?.m_StreamedClip?.curveCount}, " +
+                                $"dense={m_MuscleClip.m_Clip?.m_DenseClip?.m_CurveCount}, " +
+                                $"constant={m_MuscleClip.m_Clip?.m_ConstantClip?.data?.Length}) — export will look static/empty");
+                        }
+                    }
+                    if (version[0] == 5 && version[1] >= 6)
+                    {
+                        TryApplyCodmQuantizedDense(reader, muscleDataStart, bindingPos, m_MuscleClip, m_ClipBindingConstant);
+                    }
+                    WarnIfConstantOnlyWithUnreadMuscle(reader.m_PathID, m_MuscleClipSize, afterMuscleStructural, bindingPos, m_MuscleClip);
+                }
             }
-            if (version[0] > 4 || (version[0] == 4 && version[1] >= 3)) //4.3 and up
+            else if (version[0] > 4 || (version[0] == 4 && version[1] >= 3)) //4.3 and up, no muscle block
             {
                 m_ClipBindingConstant = new AnimationClipBindingConstant(reader);
             }
+        AfterBindings:
             if (version[0] > 2018 || (version[0] == 2018 && version[1] >= 3)) //2018.3 and up
             {
                 var m_HasGenericRootTransform = reader.ReadBoolean();
@@ -1040,15 +1252,276 @@ namespace AssetStudio
                 reader.AlignStream();
             }
             int numEvents = reader.ReadInt32();
-            m_Events = new AnimationEvent[numEvents];
-            for (int i = 0; i < numEvents; i++)
+            if (numEvents < 0 || numEvents > 4096 || numEvents > reader.Remaining / 8)
             {
-                m_Events[i] = new AnimationEvent(reader);
+                Logger.Warning($"[AnimClip] Absurd event count {numEvents} (PathID={reader.m_PathID}); treating as no events");
+                m_Events = Array.Empty<AnimationEvent>();
+            }
+            else
+            {
+                m_Events = new AnimationEvent[numEvents];
+                for (int i = 0; i < numEvents; i++)
+                {
+                    m_Events[i] = new AnimationEvent(reader);
+                }
             }
             if (version[0] >= 2017) //2017 and up
             {
                 reader.AlignStream();
             }
+        }
+
+        private static AnimationClipBindingConstant RebuildBindingsOrEmpty(ClipMuscleConstant muscle)
+        {
+            var rebuilt = muscle?.m_Clip?.ConvertValueArrayToGenericBinding();
+            if (rebuilt?.genericBindings != null && rebuilt.genericBindings.Length > 0)
+                return rebuilt;
+            return new AnimationClipBindingConstant
+            {
+                genericBindings = Array.Empty<GenericBinding>(),
+                pptrCurveMapping = Array.Empty<PPtr<Object>>()
+            };
+        }
+
+        private static bool MuscleHasCurveData(ClipMuscleConstant muscle)
+        {
+            var clip = muscle?.m_Clip;
+            if (clip == null) return false;
+            if ((clip.m_StreamedClip?.curveCount ?? 0) > 0) return true;
+            if ((clip.m_DenseClip?.m_CurveCount ?? 0) > 0) return true;
+            if ((clip.m_ConstantClip?.data?.Length ?? 0) > 0) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// CODM often stores a large undecoded blob between ClipMuscleConstant and
+        /// ClipBindingConstant. When the in-Clip StreamedClip is empty, export collapses
+        /// to ConstantClip (static pose) even though muscleClipSize implies more data.
+        /// </summary>
+        private static int _codmExtWarnCount;
+
+        private static void TryApplyCodmQuantizedDense(
+            ObjectReader reader, long muscleDataStart, long bindingPos,
+            ClipMuscleConstant muscle, AnimationClipBindingConstant bindings)
+        {
+            if (bindingPos <= muscleDataStart || bindingPos - muscleDataStart > reader.byteSize)
+                return;
+            var len = (int)(bindingPos - muscleDataStart);
+            if (len < 64)
+                return;
+            var saved = reader.Position;
+            try
+            {
+                reader.Position = muscleDataStart;
+                var region = reader.ReadBytes(len);
+                CodmQuantizedDense.TryApply(region, muscle, bindings);
+            }
+            catch (Exception e)
+            {
+                Logger.Warning($"[AnimClip] CODM quant dense decode failed (PathID={reader.m_PathID}): {e.Message}");
+            }
+            finally
+            {
+                reader.Position = saved;
+            }
+        }
+
+        private static void WarnIfConstantOnlyWithUnreadMuscle(
+            long pathId, uint muscleClipSize, long afterMuscleStructural, long bindingPos, ClipMuscleConstant muscle)
+        {
+            var streamed = muscle?.m_Clip?.m_StreamedClip;
+            var dense = muscle?.m_Clip?.m_DenseClip;
+            var constantLen = muscle?.m_Clip?.m_ConstantClip?.data?.Length ?? 0;
+            var streamedCurves = streamed?.curveCount ?? 0;
+            var streamedData = streamed?.data?.Length ?? 0;
+            // Successfully hydrated dense samples from the CODM extension.
+            if (dense != null && dense.m_CurveCount > 0 && dense.m_SampleArray != null && dense.m_SampleArray.Length > 0)
+                return;
+            if (streamedCurves > 0 || streamedData > 2)
+                return;
+            if (constantLen <= 0)
+                return;
+            var gap = bindingPos - afterMuscleStructural;
+            if (gap < 512 && muscleClipSize < 2048)
+                return;
+
+            _codmExtWarnCount++;
+            if (_codmExtWarnCount <= 3)
+            {
+                Logger.Warning(
+                    $"[AnimClip] PathID={pathId}: StreamedClip empty (data={streamedData},curves={streamedCurves}) but " +
+                    $"~{gap} bytes sit between muscle struct and bindings (muscleSize={muscleClipSize}, " +
+                    $"denseFrames={dense?.m_FrameCount}, constant={constantLen}). " +
+                    "CODM extension animation data is not decoded yet — export will look static (constant pose only).");
+            }
+            else if (_codmExtWarnCount == 4)
+            {
+                Logger.Warning(
+                    "[AnimClip] Further CODM-extension static-clip warnings suppressed this session. " +
+                    "Clips with large StreamedClip (e.g. FireLeft/FireJump) are unaffected.");
+            }
+        }
+
+        private static bool TryPeekBindingList(ObjectReader reader, out int count)
+        {
+            count = 0;
+            var objectEnd = reader.byteStart + reader.byteSize;
+            if (reader.Position + 8 > objectEnd) return false;
+            var pos = reader.Position;
+            try
+            {
+                count = reader.ReadInt32();
+                if (count < 1 || count > 512 || reader.Position + 28 > objectEnd)
+                    return false;
+                reader.ReadUInt32();
+                uint attr = reader.ReadUInt32();
+                _ = new PPtr<Object>(reader);
+                int typeId = reader.ReadInt32();
+                return IsPlausibleGenericBinding(typeId, attr);
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                reader.Position = pos;
+            }
+        }
+
+        /// <summary>
+        /// CoD Mobile: after ClipMuscleConstant there may be extra unknown data before
+        /// AnimationClipBindingConstant. Prefer a non-empty plausible binding list.
+        /// Empty lists are only accepted when <paramref name="allowEmpty"/> is true
+        /// (no muscle curve data) — otherwise we get static first/last-frame exports.
+        /// </summary>
+        private static bool TrySeekToAnimationClipBindingConstant(ObjectReader reader, bool allowEmpty = true)
+        {
+            var objectEnd = reader.byteStart + reader.byteSize;
+            var seekStart = reader.Position;
+            long? emptyTailPos = null;
+
+            reader.Position = seekStart;
+            while (reader.Position + 8 <= objectEnd)
+            {
+                var pos = reader.Position;
+                int count = reader.ReadInt32();
+
+                if (count >= 1 && count <= 512 && reader.Position + 28 <= objectEnd)
+                {
+                    var peekPos = reader.Position;
+                    try
+                    {
+                        reader.ReadUInt32(); // path
+                        uint attr = reader.ReadUInt32();
+                        _ = new PPtr<Object>(reader);
+                        int typeId = reader.ReadInt32();
+                        if (IsPlausibleGenericBinding(typeId, attr))
+                        {
+                            reader.Position = pos;
+                            Logger.Info($"[AnimClip] CODM binding sync at 0x{pos - reader.byteStart:X} (count={count}, typeID={typeId}, attr={attr})");
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                        // peek failed — keep scanning
+                    }
+                    reader.Position = peekPos;
+                }
+
+                if (allowEmpty && count == 0 && reader.Position + 8 <= objectEnd)
+                {
+                    int mapCount = reader.ReadInt32();
+                    if (mapCount == 0)
+                    {
+                        int eventCount = reader.ReadInt32();
+                        long bytesLeft = objectEnd - pos;
+                        if (eventCount == 0 && bytesLeft <= 16)
+                            emptyTailPos = pos;
+                        else if (eventCount >= 0 && eventCount <= 64 && bytesLeft <= 2048)
+                            emptyTailPos = pos;
+                    }
+                }
+
+                reader.Position = pos + 4;
+            }
+
+            if (allowEmpty && emptyTailPos.HasValue)
+            {
+                reader.Position = emptyTailPos.Value;
+                Logger.Warning(
+                    $"[AnimClip] CODM binding sync at 0x{emptyTailPos.Value - reader.byteStart:X} " +
+                    "(empty bindings at tail — muscle ValueArray may still hold curve maps)");
+                return true;
+            }
+
+            reader.Position = seekStart;
+            return false;
+        }
+
+        private static bool IsPlausibleGenericBinding(int typeId, uint attr)
+        {
+            // Transform TRS channels
+            if (typeId == (int)ClassIDType.Transform && attr >= 1 && attr <= 4)
+                return true;
+            // Common non-Transform curve targets (attribute is usually a CRC hash)
+            if (typeId == (int)ClassIDType.Animator ||
+                typeId == (int)ClassIDType.SkinnedMeshRenderer ||
+                typeId == (int)ClassIDType.GameObject ||
+                typeId == (int)ClassIDType.RectTransform ||
+                typeId == (int)ClassIDType.MonoBehaviour)
+                return attr != 0 || typeId == (int)ClassIDType.Animator;
+            return false;
+        }
+
+        /// <summary>
+        /// After giving up on bindings, slide forward to a plausible AnimationEvent[] header.
+        /// </summary>
+        private static void TrySeekToAnimationEvents(ObjectReader reader)
+        {
+            var objectEnd = reader.byteStart + reader.byteSize;
+            var start = reader.Position;
+            while (reader.Position + 4 <= objectEnd)
+            {
+                var pos = reader.Position;
+                int count = reader.ReadInt32();
+                if (count == 0)
+                {
+                    // empty events at end of object is common
+                    if (reader.Position >= objectEnd - 4)
+                    {
+                        reader.Position = pos;
+                        return;
+                    }
+                }
+                if (count >= 1 && count <= 256)
+                {
+                    // Peek: first event starts with float time (0..600s typical) then aligned string
+                    var peek = reader.Position;
+                    try
+                    {
+                        float time = reader.ReadSingle();
+                        if (time >= -0.01f && time < 600f)
+                        {
+                            var name = reader.ReadAlignedString();
+                            if (name != null && name.Length < 256)
+                            {
+                                reader.Position = pos;
+                                Logger.Info($"[AnimClip] CODM event sync at 0x{pos - reader.byteStart:X} (count={count})");
+                                return;
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // continue
+                    }
+                    reader.Position = peek;
+                }
+                reader.Position = pos + 4;
+            }
+            reader.Position = start;
         }
     }
 }
