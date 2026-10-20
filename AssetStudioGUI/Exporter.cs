@@ -327,6 +327,41 @@ namespace AssetStudioGUI
             return false;
         }
 
+        /// <summary>
+        /// Skinned mesh with its Avatar skeleton, bind poses and materials. Cast is the primary format;
+        /// GLB and FBX (+ Blender import script) are written when enabled in Export Options.
+        /// With every format disabled the stock OBJ export runs instead.
+        /// </summary>
+        public static bool ExportSkinnedMesh(AssetItem item, string exportPath)
+        {
+            var m_Mesh = (Mesh)item.Asset;
+            if (m_Mesh.m_VertexCount <= 0 || m_Mesh.m_Skin == null || m_Mesh.m_Skin.Length == 0)
+                return false;
+            var settings = Properties.Settings.Default;
+            if (!settings.exportCast && !settings.exportGlb && !settings.exportFbx)
+                return ExportMesh(item, exportPath);
+
+            var any = false;
+            if (settings.exportCast && TryExportFile(exportPath, item, ".cast", out var castPath))
+            {
+                var convert = BuildSkinnedMeshConverter(m_Mesh);
+                CastExporter.Export(Path.GetDirectoryName(castPath), Path.GetFileNameWithoutExtension(castPath), convert, (float)settings.scaleFactor);
+                any = true;
+            }
+            if (settings.exportGlb)
+                any |= ExportSkinnedMeshGlb(item, exportPath);
+            if (settings.exportFbx)
+                any |= ExportSkinnedMeshFbx(item, exportPath);
+            return any;
+        }
+
+        private static ModelConverter BuildSkinnedMeshConverter(Mesh m_Mesh)
+        {
+            var matchedAvatar = FindAvatarForMesh(m_Mesh);
+            var materials = FindMaterialsForMesh(m_Mesh);
+            return new ModelConverter(m_Mesh, matchedAvatar, Properties.Settings.Default.convertType, materials.Count > 0 ? materials.ToArray() : null);
+        }
+
         public static bool ExportSkinnedMeshFbx(AssetItem item, string exportPath)
         {
             var m_Mesh = (Mesh)item.Asset;
@@ -348,7 +383,6 @@ namespace AssetStudioGUI
             // Export FBX (works in Maya, may not work in Blender)
             var convert = new ModelConverter(m_Mesh, matchedAvatar, Properties.Settings.Default.convertType, materials.Count > 0 ? materials.ToArray() : null);
             ExportFbxDirect(convert, exportFullPath);
-            ExportCompanionFormats(convert, exportFullPath);
 
             // Also generate a Blender Python script for reliable import
             GenerateBlenderScript(m_Mesh, matchedAvatar, exportFullPath, materials);
@@ -1025,7 +1059,7 @@ namespace AssetStudioGUI
         }
 
         /// <summary>
-        /// Optional GLB / Cast sidecars next to the FBX. Toggled in Export Options.
+        /// Cast (primary) and GLB outputs next to where the FBX would go. Toggled in Export Options.
         /// </summary>
         private static void ExportCompanionFormats(IImported convert, string fbxPath)
         {
@@ -1061,6 +1095,8 @@ namespace AssetStudioGUI
 
         private static void ExportFbx(IImported convert, string exportPath)
         {
+            if (!Properties.Settings.Default.exportFbx)
+                return; // Cast / GLB sidecars are written by ExportCompanionFormats
             var eulerFilter = Properties.Settings.Default.eulerFilter;
             var filterPrecision = (float)Properties.Settings.Default.filterPrecision;
             var exportAllNodes = Properties.Settings.Default.exportAllNodes;
@@ -1131,14 +1167,7 @@ namespace AssetStudioGUI
                 case ClassIDType.Mesh:
                     var meshAsset = (Mesh)item.Asset;
                     if (meshAsset.m_Skin?.Length > 0 && meshAsset.m_BindPose?.Length > 0)
-                    {
-                        // Export single-mesh glTF as primary format (works in Blender, Maya, etc.)
-                        ExportSkinnedMeshGlb(item, exportPath);
-                        // Also export OBJ for reference
-                        ExportMesh(item, exportPath);
-                        // Also export FBX + Blender script as fallback
-                        return ExportSkinnedMeshFbx(item, exportPath);
-                    }
+                        return ExportSkinnedMesh(item, exportPath);
                     return ExportMesh(item, exportPath);
                 case ClassIDType.VideoClip:
                     return ExportVideoClip(item, exportPath);

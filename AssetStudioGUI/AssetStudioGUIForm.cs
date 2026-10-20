@@ -109,6 +109,7 @@ namespace AssetStudioGUI
             Logger.Default = logger;
             Progress.Default = new Progress<int>(SetProgressBarValue);
             Studio.StatusStripUpdate = StatusStripUpdate;
+            InitCodmMenu();
         }
 
         private void AssetStudioGUIForm_DragEnter(object sender, DragEventArgs e)

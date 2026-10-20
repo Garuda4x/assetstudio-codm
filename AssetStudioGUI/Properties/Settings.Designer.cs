@@ -277,7 +277,7 @@ namespace AssetStudioGUI.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
         public bool exportCast {
             get {
                 return ((bool)(this["exportCast"]));
@@ -289,13 +289,25 @@ namespace AssetStudioGUI.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool exportGlb {
             get {
                 return ((bool)(this["exportGlb"]));
             }
             set {
                 this["exportGlb"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool exportFbx {
+            get {
+                return ((bool)(this["exportFbx"]));
+            }
+            set {
+                this["exportFbx"] = value;
             }
         }
     }

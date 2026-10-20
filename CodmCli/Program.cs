@@ -241,16 +241,16 @@ namespace CodmCli
         {
             Console.WriteLine($"{w.Folder}  ({w.Kind}, id {w.Id}{(w.IsBase ? ", BASE weapon" : "")})");
             if (w.Base != null)
-                Console.WriteLine($"  base weapon : {w.Base.Folder}");
+                Console.WriteLine($"  base chain  : {string.Join(" -> ", w.Ancestors().Select(a => a.Folder))}");
             if (w.Skins.Count > 0)
                 Console.WriteLine($"  skins       : {w.Skins.Count}  ({string.Join(", ", w.Skins.Take(8).Select(s => s.Folder))}{(w.Skins.Count > 8 ? ", ..." : "")})");
             Console.WriteLine($"  paks ({w.Paks.Count}):");
             foreach (var p in w.Paks.OrderBy(p => p.Name.Decoded))
                 Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
-            if (w.Base != null)
+            foreach (var a in w.Ancestors())
             {
-                Console.WriteLine($"  base paks ({w.Base.Paks.Count}):");
-                foreach (var p in w.Base.Paks.OrderBy(p => p.Name.Decoded))
+                Console.WriteLine($"  base paks of {a.Folder} ({a.Paks.Count}):");
+                foreach (var p in a.Paks.OrderBy(p => p.Name.Decoded))
                     Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
             }
             if (w.Components.Count > 0)

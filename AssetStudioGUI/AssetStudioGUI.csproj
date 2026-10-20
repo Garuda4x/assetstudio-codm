@@ -16,6 +16,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\AssetStudioUtility\AssetStudioUtility.csproj" />
 		<ProjectReference Include="..\AssetStudio\AssetStudio.csproj" />
+		<ProjectReference Include="..\AssetStudio.Codm\AssetStudio.Codm.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

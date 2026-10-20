@@ -53,8 +53,8 @@ namespace AssetStudio.Codm
         public List<PakEntry> SelectPaks(WeaponEntry w, WeaponExportOptions o)
         {
             var all = new List<PakEntry>(w.Paks);
-            if (o.IncludeBaseWeapon && w.Base != null)
-                all.AddRange(w.Base.Paks);
+            if (o.IncludeBaseWeapon)
+                all.AddRange(w.BaseChainPaks());
             if (o.IncludeComponents)
                 all.AddRange(w.Components);
             return PakIndex.OrderForLoading(all, cfg);

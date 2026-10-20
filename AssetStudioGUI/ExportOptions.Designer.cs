@@ -35,6 +35,7 @@ namespace AssetStudioGUI
             this.openAfterExport = new System.Windows.Forms.CheckBox();
             this.exportCast = new System.Windows.Forms.CheckBox();
             this.exportGlb = new System.Windows.Forms.CheckBox();
+            this.exportFbx = new System.Windows.Forms.CheckBox();
             this.restoreExtensionName = new System.Windows.Forms.CheckBox();
             this.assetGroupOptions = new System.Windows.Forms.ComboBox();
             this.label6 = new System.Windows.Forms.Label();
@@ -97,6 +98,7 @@ namespace AssetStudioGUI
             // 
             this.groupBox1.AutoSize = true;
             this.groupBox1.Controls.Add(this.exportGlb);
+            this.groupBox1.Controls.Add(this.exportFbx);
             this.groupBox1.Controls.Add(this.exportCast);
             this.groupBox1.Controls.Add(this.openAfterExport);
             this.groupBox1.Controls.Add(this.restoreExtensionName);
@@ -131,20 +133,28 @@ namespace AssetStudioGUI
             this.exportCast.Name = "exportCast";
             this.exportCast.Size = new System.Drawing.Size(210, 16);
             this.exportCast.TabIndex = 11;
-            this.exportCast.Text = "Export Cast (.cast model + anims)";
+            this.exportCast.Text = "Export Cast (.cast model + anims) - primary";
             this.exportCast.UseVisualStyleBackColor = true;
             // 
             // exportGlb
             // 
             this.exportGlb.AutoSize = true;
-            this.exportGlb.Checked = true;
-            this.exportGlb.CheckState = System.Windows.Forms.CheckState.Checked;
             this.exportGlb.Location = new System.Drawing.Point(6, 204);
             this.exportGlb.Name = "exportGlb";
             this.exportGlb.Size = new System.Drawing.Size(168, 16);
             this.exportGlb.TabIndex = 12;
-            this.exportGlb.Text = "Export glTF Binary (.glb)";
+            this.exportGlb.Text = "Export glTF Binary (.glb) - debugging";
             this.exportGlb.UseVisualStyleBackColor = true;
+            // 
+            // exportFbx
+            // 
+            this.exportFbx.AutoSize = true;
+            this.exportFbx.Location = new System.Drawing.Point(6, 226);
+            this.exportFbx.Name = "exportFbx";
+            this.exportFbx.Size = new System.Drawing.Size(168, 16);
+            this.exportFbx.TabIndex = 13;
+            this.exportFbx.Text = "Export FBX (stock AssetStudio)";
+            this.exportFbx.UseVisualStyleBackColor = true;
             // 
             // restoreExtensionName
             // 
@@ -557,6 +567,7 @@ namespace AssetStudioGUI
         private System.Windows.Forms.CheckBox openAfterExport;
         private System.Windows.Forms.CheckBox exportCast;
         private System.Windows.Forms.CheckBox exportGlb;
+        private System.Windows.Forms.CheckBox exportFbx;
         private System.Windows.Forms.CheckBox exportAllUvsAsDiffuseMaps;
         private System.Windows.Forms.ToolTip exportUvsTooltip;
     }

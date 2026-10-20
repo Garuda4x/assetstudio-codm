@@ -37,6 +37,7 @@ namespace AssetStudioGUI
             fbxFormat.SelectedIndex = Properties.Settings.Default.fbxFormat;
             exportCast.Checked = Properties.Settings.Default.exportCast;
             exportGlb.Checked = Properties.Settings.Default.exportGlb;
+            exportFbx.Checked = Properties.Settings.Default.exportFbx;
 
         }
 
@@ -69,6 +70,7 @@ namespace AssetStudioGUI
             Properties.Settings.Default.fbxFormat = fbxFormat.SelectedIndex;
             Properties.Settings.Default.exportCast = exportCast.Checked;
             Properties.Settings.Default.exportGlb = exportGlb.Checked;
+            Properties.Settings.Default.exportFbx = exportFbx.Checked;
             Properties.Settings.Default.Save();
             DialogResult = DialogResult.OK;
             Close();

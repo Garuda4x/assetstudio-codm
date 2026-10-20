@@ -43,6 +43,33 @@ namespace AssetStudio.Codm
         public List<WwiseBankInfo> SharedBanks { get; } = new List<WwiseBankInfo>();
 
         public string BaseName => Base?.Name ?? Name;
+
+        /// <summary>Base, base of the base, ... up to the weapon that carries the mesh.</summary>
+        public IEnumerable<WeaponEntry> Ancestors()
+        {
+            var seen = new HashSet<WeaponEntry>();
+            for (var b = Base; b != null && seen.Add(b); b = b.Base)
+                yield return b;
+        }
+
+        /// <summary>The top of the base chain (itself when it has no base).</summary>
+        public WeaponEntry RootBase
+        {
+            get
+            {
+                WeaponEntry last = this;
+                foreach (var a in Ancestors())
+                    last = a;
+                return last;
+            }
+        }
+
+        /// <summary>Paks of every weapon in the base chain, nearest base first.</summary>
+        public List<PakEntry> BaseChainPaks()
+        {
+            return Ancestors().SelectMany(a => a.Paks).ToList();
+        }
+
         public override string ToString() => Folder;
     }
 
