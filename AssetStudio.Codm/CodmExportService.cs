@@ -24,6 +24,12 @@ namespace AssetStudio.Codm
         /// is extracted through its own events anyway.
         /// </summary>
         public bool ClassBanks { get; set; } = false;
+        /// <summary>
+        /// Also dump the lettered variants of a numeric bank (247a, 247c...). Off by default: only the
+        /// plain bank and its third-person set (247, 247p3) are taken; the variants are most likely the
+        /// sets of other skins sharing the base.
+        /// </summary>
+        public bool BankVariants { get; set; } = false;
         /// <summary>Load the bundles the weapon paks reference (shared animations, controllers, avatars).</summary>
         public bool ResolveDependencies { get; set; } = true;
         public int MaxDependencyPaks { get; set; } = 60;
@@ -410,6 +416,8 @@ namespace AssetStudio.Codm
         {
             // the weapon's own banks and those of its base chain (a skin without custom sounds uses the base's)
             var own = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).ToList();
+            if (!o.BankVariants)
+                own = own.Where(b => !b.IsNumeric || System.Text.RegularExpressions.Regex.IsMatch(b.Name, @"^\d+(p\d)?$")).ToList();
             var banks = own.Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (o.ClassBanks)
                 banks.AddRange(w.SharedBanks.Select(b => b.Name).Where(n => !banks.Contains(n, StringComparer.OrdinalIgnoreCase)));

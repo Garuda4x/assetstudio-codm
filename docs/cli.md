@@ -13,7 +13,7 @@ walking up from the exe directory, so the copy at the repository root is used). 
 | `codm search <text> [--max n]` | paks whose decoded name or raw file name contains the text |
 | `codm weapons [filter] [--kind main\|melee\|throw\|assi\|special] [--base] [--no-banks]` | weapon table: paks, base, skins, fx, own banks, class banks |
 | `codm weapon <id\|folder\|name>` | one weapon: paks, base chain paks, components, effects, sound banks, class banks |
-| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--flat-sounds] [--class-banks] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps`; sounds grouped per event unless `--flat-sounds`; only the weapon's own banks unless `--class-banks` |
+| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--flat-sounds] [--class-banks] [--bank-variants] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps`; sounds grouped per event unless `--flat-sounds`; only the weapon's own banks unless `--class-banks`, only `<id>` and `<id>p3` unless `--bank-variants` |
 | `codm anims <weapon> [--no-deps]` | per Animator prefab: its controller, how many clips resolve and in which bundle the missing ones live |
 | `codm cabindex [--rebuild]` | build or refresh the CAB -> pak index (`cache/cab-index.json`) |
 | `codm deps <pak...>` | external bundles a pak references and which paks provide them |
