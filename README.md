@@ -121,7 +121,9 @@ See [docs/cli.md](docs/cli.md).
    controller resolves the most clips wins. A skin whose own controller bundle is not on disk gets the
    clips of the base weapon prefab with the same role (`_1P`, `_3P`, `_UI`).
 4. Textures of the weapon's own bundles, then the sounds: every bank whose event names mention the
-   weapon (`play_wpn_locus_fire_1p` lives in `105.bnk`), banks numbered by its id, and the class bank.
+   weapon (`play_wpn_locus_fire_1p` lives in `105.bnk`) or that is numbered by its id, for the weapon and
+   its base chain. The class bank (`wpn_sniper`, the whole class) is only dumped with `--class-banks`;
+   media a weapon bank borrows from it is extracted through the weapon's own events anyway.
    Wems are written per event (`sounds/105/play_wpn_locus_fire_1p/...`, unnamed events by id,
    `events.txt` lists the mapping); `--flat-sounds` dumps a bank into one folder instead.
 5. With **FX textures**: each linked effect bundle is loaded with its dependencies, the materials its

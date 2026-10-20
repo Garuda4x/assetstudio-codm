@@ -30,7 +30,7 @@ namespace AssetStudioGUI
         private TreeView weaponTree;
         private Label weaponInfo;
         private ListView assetList;
-        private CheckBox optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents, optDeps;
+        private CheckBox optModels, optTextures, optSounds, optWav, optClassBanks, optFx, optBase, optComponents, optDeps;
         private ComboBox classCombo;
         private Button btnLoad, btnAdd, btnPreview, btnExport, btnOpenFolder, btnCopy;
         private WeaponEntry current;
@@ -175,16 +175,17 @@ namespace AssetStudioGUI
                     await LoadIntoMain(new[] { entry.FullPath }, false);
             };
 
-            var options = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 32, Padding = new Padding(4, 6, 4, 0) };
+            var options = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, Padding = new Padding(4, 6, 4, 0) };
             optModels = new CheckBox { Text = "Models (cast)", Checked = true, AutoSize = true };
             optTextures = new CheckBox { Text = "Textures", Checked = true, AutoSize = true };
             optSounds = new CheckBox { Text = "Sounds", Checked = true, AutoSize = true };
             optWav = new CheckBox { Text = "wem -> wav", Checked = true, AutoSize = true };
+            optClassBanks = new CheckBox { Text = "Class banks too (whole class, big)", Checked = false, AutoSize = true };
             optFx = new CheckBox { Text = "FX textures", Checked = false, AutoSize = true };
             optBase = new CheckBox { Text = "Include base weapon", Checked = true, AutoSize = true };
             optComponents = new CheckBox { Text = "Include components", Checked = false, AutoSize = true };
             optDeps = new CheckBox { Text = "Resolve dependencies (shared anims, controllers)", Checked = true, AutoSize = true };
-            options.Controls.AddRange(new Control[] { optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents, optDeps });
+            options.Controls.AddRange(new Control[] { optModels, optTextures, optSounds, optWav, optClassBanks, optFx, optBase, optComponents, optDeps });
 
             var classRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 30, Padding = new Padding(4, 4, 4, 0) };
             classRow.Controls.Add(new Label { Text = "Sound class of this family:", AutoSize = true, Padding = new Padding(0, 5, 4, 0) });
@@ -617,6 +618,7 @@ namespace AssetStudioGUI
                 Textures = optTextures.Checked,
                 Sounds = optSounds.Checked,
                 ConvertWem = optWav.Checked,
+                ClassBanks = optClassBanks.Checked,
                 Effects = optFx.Checked,
                 IncludeBaseWeapon = optBase.Checked,
                 IncludeComponents = optComponents.Checked,

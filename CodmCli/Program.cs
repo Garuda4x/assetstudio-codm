@@ -94,7 +94,7 @@ namespace CodmCli
             Console.WriteLine("  search <text>                  find paks by decoded name");
             Console.WriteLine("  weapons [filter] [--kind k]    list weapons (filter matches folder; --kind main|melee|throw|assi|special; --base)");
             Console.WriteLine("  weapon <id|folder|name>        show the paks, base weapon, skins, components, fx and banks of a weapon");
-            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
+            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--class-banks] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
             Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
             Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
             Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids");
@@ -358,6 +358,7 @@ namespace CodmCli
                 ConvertWem = !o.Has("no-wav"),
                 ResolveDependencies = !o.Has("no-deps"),
                 SoundsByEvent = !o.Has("flat-sounds"),
+                ClassBanks = o.Has("class-banks"),
                 MaxDependencyPaks = o.GetInt("max-deps", 60),
                 AllPrefabCopies = o.Has("all-copies"),
             };

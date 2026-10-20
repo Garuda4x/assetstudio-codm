@@ -18,6 +18,12 @@ namespace AssetStudio.Codm
         public bool ConvertWem { get; set; } = true;
         /// <summary>Group wems by the event that plays them (folders named after the resolved event name).</summary>
         public bool SoundsByEvent { get; set; } = true;
+        /// <summary>
+        /// Also dump the class banks (wpn_sniper...) and the banks the weapon's banks borrow media from.
+        /// Off by default: those hold the sounds of a whole weapon class, and media a weapon bank borrows
+        /// is extracted through its own events anyway.
+        /// </summary>
+        public bool ClassBanks { get; set; } = false;
         /// <summary>Load the bundles the weapon paks reference (shared animations, controllers, avatars).</summary>
         public bool ResolveDependencies { get; set; } = true;
         public int MaxDependencyPaks { get; set; } = 60;
@@ -402,10 +408,16 @@ namespace AssetStudio.Codm
 
         public void ExportSounds(WeaponEntry w, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log)
         {
-            var banks = w.Banks.Concat(w.SharedBanks).Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            // the weapon's own banks and those of its base chain (a skin without custom sounds uses the base's)
+            var own = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).ToList();
+            var banks = own.Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (o.ClassBanks)
+                banks.AddRange(w.SharedBanks.Select(b => b.Name).Where(n => !banks.Contains(n, StringComparer.OrdinalIgnoreCase)));
             if (banks.Count == 0)
             {
-                log("[Export] no sound banks linked to this weapon (set its sound class to get the wpn_<class> bank)");
+                log(w.SharedBanks.Count > 0
+                    ? $"[Export] no weapon-specific sound bank; its class banks ({string.Join(", ", w.SharedBanks.Select(b => b.Name))}) hold the whole class, enable class banks to dump them"
+                    : "[Export] no sound banks linked to this weapon (set its sound class to get the wpn_<class> bank)");
                 return;
             }
             foreach (var bankName in banks)
