@@ -342,3 +342,6 @@ healthchecksdb
 # CODM fork: scratch probes and export output
 _temp/
 exports/
+
+# derived indexes
+cache/

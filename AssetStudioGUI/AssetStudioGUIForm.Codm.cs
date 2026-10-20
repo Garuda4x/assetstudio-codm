@@ -86,7 +86,7 @@ namespace AssetStudioGUI
         }
 
         /// <summary>Load pak files into the main window; <paramref name="additive"/> keeps what is already loaded.</summary>
-        internal async Task LoadPaksFromBrowser(string[] paths, bool additive)
+        internal async Task LoadPaksFromBrowser(string[] paths, bool additive, bool resolveDependencies = false, Action<string> log = null)
         {
             if (paths == null || paths.Length == 0)
                 return;
@@ -95,6 +95,15 @@ namespace AssetStudioGUI
             assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;
             StatusStripUpdate($"Loading {paths.Length} pak(s)...");
             await Task.Run(() => assetsManager.LoadFiles(paths));
+            if (resolveDependencies)
+            {
+                StatusStripUpdate("Resolving bundle dependencies...");
+                await Task.Run(() =>
+                {
+                    var cabs = CodmSession.EnsureCabIndex(log);
+                    DependencyResolver.Resolve(assetsManager, cabs, CodmSession.Config, log);
+                });
+            }
             if (additive)
                 RefreshBrowserAfterLoad();
             BuildAssetStructures();

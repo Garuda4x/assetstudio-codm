@@ -64,6 +64,9 @@ namespace AssetStudio
             importFilesHash.Clear();
             noexistFiles.Clear();
 
+            // files were added: cached "missing" lookups may now resolve
+            assetsFileIndexCache.Clear();
+
             ReadAssets();
             ProcessAssets();
 
@@ -505,7 +508,16 @@ namespace AssetStudio
                                 obj = new RectTransform(objectReader);
                                 break;
                             case ClassIDType.Shader:
-                                obj = new Shader(objectReader);
+                                try
+                                {
+                                    obj = new Shader(objectReader);
+                                }
+                                catch (Exception shaderEx)
+                                {
+                                    // CoD Mobile shader blobs do not follow the stock layout; keep a stub
+                                    CodmDiagnostics.Log($"Skipping Shader PathID={objectInfo.m_PathID}: {shaderEx.GetType().Name}");
+                                    obj = new Object(objectReader);
+                                }
                                 break;
                             case ClassIDType.SkinnedMeshRenderer:
                                 if (CodmDiagnostics.Enabled)

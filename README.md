@@ -15,8 +15,9 @@ or updated from this machine; the tooling only reads files.**
 | Models (skinned meshes, skeleton, bind pose, weights, materials) | works, `.cast` primary, GLB/FBX optional |
 | Animations (CoD Mobile quantized dense clips) | works, see [docs/codm-formats.md](docs/codm-formats.md) |
 | Textures (DXT1/DXT5/BC7, streamed `.resS`) | works, png by default |
-| Pak navigation | obfuscated names are decoded; weapons grouped as base + skins |
-| Sounds (Wwise) | banks parsed, wems resolved across banks, converted with vgmstream |
+| Pak navigation | obfuscated names are decoded (letters and digits); weapons grouped as base + skins |
+| Bundle dependencies | shared animation packs, controllers and avatars are loaded automatically (CAB index) |
+| Sounds (Wwise) | skin banks by real weapon id, class bank (wpn_sniper...) from the weapon class map, wems resolved across banks, wav via vgmstream |
 | Effects | FX bundles are linked by name; textures and an object list are exported |
 | Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
 
@@ -73,6 +74,14 @@ so Debug and Release builds share it:
 Set `VgmstreamPath` to `vgmstream-cli.exe` to get `.wav` next to the `.wem` files. `Diagnostics`
 turns the per-field reader logging back on (it is noisy and only useful when a bundle fails to parse).
 
+Two more files live next to the config:
+
+- `weapon-classes.json`: sound class per base weapon (`"locus": "sniper"`). A built-in list covers the
+  well-known weapons; this file overrides it. The class picks the `wpn_<class>` bank for the base weapon
+  sounds (`codm class <weapon> <class>` or the combo box in the browser).
+- `cache/cab-index.json`: which pak contains which serialized file (CAB). Built on first use, about five
+  minutes for 17 000 paks, then reused. Needed to load the bundles a weapon references.
+
 ## Workflow
 
 GUI: start `AssetStudioGUI.exe`, open **CODM > Weapon browser** (Ctrl+W, or start with
@@ -85,13 +94,28 @@ Command line:
 
 ```
 codm weapons locus                 list the Locus family
-codm weapon 1648                   paks, base chain, components, fx and banks of the Locus railgun
-codm export 1648                   export it to the configured export root
-codm bank 130                      events and sounds of a skin sound set
+codm weapon 2537                   paks, base chain, components, fx and banks of the Locus railgun
+codm export 2537                   export it to the configured export root
+codm anims 2537                    where each Animator's clips live and whether they resolve
+codm class 2537 sniper             set the sound class of the family
+codm bank 249                      events and sounds of a skin sound set
 codm search cod_effects/particles  find paks by decoded name
 ```
 
 See [docs/cli.md](docs/cli.md).
+
+## How a weapon export is assembled
+
+1. All module copies of the weapon's paks plus its base chain are loaded (download modules first).
+2. Every bundle they reference is looked up in the CAB index and loaded too (animation packs,
+   animator controllers, avatars; shaders and effects are skipped). Three rounds, 60 paks at most.
+3. One Cast model per Animator prefab; where the same prefab exists in several bundles the copy whose
+   controller resolves the most clips wins. A skin whose own controller bundle is not on disk gets the
+   clips of the base weapon prefab with the same role (`_1P`, `_3P`, `_UI`).
+4. Textures of the weapon's own bundles, then the wems of its skin banks and its class bank.
+
+Third-person prefabs ship without a controller (the game assigns `basic_3p` at runtime), so their
+animations are the shared packs under `cod_models/weapons/animations/` (load those paks directly).
 
 ## Known limitations
 
@@ -99,7 +123,10 @@ See [docs/cli.md](docs/cli.md).
   so `MonoBehaviour` fields (weapon definitions, FX and sound references) cannot be read generically.
 - The config tables under `PersistentData\Extract\55\DataTableBytes` are **encrypted**. They hold the
   real weapon to sound/FX mapping; weapon relations here are derived from decoded names instead.
-  Some skins have no recognisable base weapon name and show up without a base.
+  Some skins have no recognisable base weapon name and show up without a base, and weapons missing
+  from the class list have no base weapon sounds until a class is set.
+- Some skin bundles reference controller/clip bundles that are not on disk (never downloaded); those
+  skins fall back to the base weapon's animations.
 - Wwise event names are FNV hashes; events are listed by id. Containers inside banks are not walked,
   so sound extraction is per bank, not per event.
 - Effects cannot be rebuilt as particle systems; the export gives their textures and object names.

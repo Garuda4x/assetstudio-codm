@@ -19,11 +19,17 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 
 - Left: weapons grouped by kind. Bold entries are base weapons (they carry the mesh); their children are
   skins, nested when a skin is itself the base of further skins. The filter matches id, name or folder.
+  Ids are the real game ids (`2537` is the Locus railgun), the same numbers the sound banks use.
 - Right: every file the catalog links to the selected weapon, grouped: weapon paks, one group per base
   in the chain, components (sights), effects, own sound banks, class banks. Weapon and base paks are
   checked by default.
 - **Load checked (replace)** / **Add checked**: push the checked paks into the main window (all module
-  copies of a path are loaded; duplicate CABs are skipped). Double-click a row to load that pak alone.
+  copies of a path are loaded; duplicate CABs are skipped). With **Resolve dependencies** ticked the
+  bundles they reference (shared animation packs, controllers, avatars) are loaded as well, so
+  Animator + AnimationClip exports from the main window find their clips. Double-click a row to load
+  that pak alone.
+- **Sound class of this family**: the class that picks the `wpn_<class>` bank; shown as map / seed /
+  kind. Change it and **Save class** to write `weapon-classes.json`.
 - **Export weapon...**: choose a folder; `CodmExportService` writes `<folder>/<weapon>/` with the
   options ticked above the list (models as Cast, textures, sounds with wav conversion, FX textures,
   base weapon paks, component paks). Progress and warnings show in the log at the bottom.

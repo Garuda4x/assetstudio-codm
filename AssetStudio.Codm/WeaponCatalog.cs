@@ -41,6 +41,10 @@ namespace AssetStudio.Codm
         public List<WwiseBankInfo> Banks { get; } = new List<WwiseBankInfo>();
         /// <summary>Class banks (wpn_ar, wpn_sniper, ...) that the family's skin banks borrow media from.</summary>
         public List<WwiseBankInfo> SharedBanks { get; } = new List<WwiseBankInfo>();
+        /// <summary>Sound class (ar, smg, sniper...) from weapon-classes.json, the built-in seed or the weapon kind; null when unknown.</summary>
+        public string WeaponClass { get; set; }
+        /// <summary>"map", "seed", "kind" or null.</summary>
+        public string WeaponClassSource { get; set; }
 
         public string BaseName => Base?.Name ?? Name;
 
@@ -93,9 +97,12 @@ namespace AssetStudio.Codm
         public List<PakEntry> GenericWeaponFxPaks { get; } = new List<PakEntry>();
         public List<PakEntry> AllEffectPaks { get; } = new List<PakEntry>();
 
-        public static WeaponCatalog Build(PakIndex index, WwiseIndex wwise = null)
+        public WeaponClassMap ClassMap { get; private set; }
+        private WwiseIndex wwiseIndex;
+
+        public static WeaponCatalog Build(PakIndex index, WwiseIndex wwise = null, WeaponClassMap classMap = null)
         {
-            var cat = new WeaponCatalog();
+            var cat = new WeaponCatalog { ClassMap = classMap, wwiseIndex = wwise };
 
             foreach (var e in index.Entries)
             {
@@ -148,7 +155,10 @@ namespace AssetStudio.Codm
             cat.LinkComponents();
             cat.LinkEffects();
             if (wwise != null)
+            {
                 cat.LinkBanks(wwise);
+                cat.LinkClasses(wwise);
+            }
             return cat;
         }
 
@@ -167,7 +177,7 @@ namespace AssetStudio.Codm
         /// <summary>Strip cosmetic prefixes/suffixes so "mythicpeacekeepermk1" and "baseversionpeacekeepermk1v72" both become "peacekeepermk1".</summary>
         public static string NormalizeName(string name)
         {
-            var n = name.ToLowerInvariant();
+            var n = name.ToLowerInvariant().Replace("_", "");
             n = SkinPrefix.Replace(n, "");
             n = VersionSuffix.Replace(n, "");
             return n.Length > 0 ? n : name.ToLowerInvariant();
@@ -275,26 +285,27 @@ namespace AssetStudio.Codm
 
             // Skin banks pull their base weapon sounds from the class banks (wpn_ar, wpn_sniper, ...).
             // Follow those references once per weapon family so every member knows its class bank.
-            var referencedCache = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var family in Weapons.GroupBy(w => w.Base ?? w))
+            var referencedCache = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var family in Weapons.GroupBy(w => w.RootBase))
             {
-                var shared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var member in family.Concat(new[] { family.Key }).Distinct())
+                var shared = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var members = family.Concat(new[] { family.Key }).Distinct().ToList();
+                foreach (var member in members)
                 {
                     foreach (var b in member.Banks.Where(b => b.IsNumeric))
                     {
                         if (!referencedCache.TryGetValue(b.Name, out var refs))
                             referencedCache[b.Name] = refs = wwise.ReferencedBankNames(b);
-                        foreach (var r in refs)
-                            if (!r.Equals(b.Name, StringComparison.OrdinalIgnoreCase) && !wwise.IsNumericBankName(r))
-                                shared.Add(r);
+                        foreach (var kv in refs)
+                            if (!kv.Key.Equals(b.Name, StringComparison.OrdinalIgnoreCase) && !wwise.IsNumericBankName(kv.Key))
+                                shared[kv.Key] = shared.TryGetValue(kv.Key, out var n) ? n + kv.Value : kv.Value;
                     }
                 }
                 if (shared.Count == 0)
                     continue;
-                foreach (var member in family.Concat(new[] { family.Key }).Distinct())
+                foreach (var member in members)
                 {
-                    foreach (var name in shared)
+                    foreach (var name in shared.OrderByDescending(kv => kv.Value).Select(kv => kv.Key))
                     {
                         if (member.Banks.Any(b => b.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
                             continue;
@@ -304,6 +315,67 @@ namespace AssetStudio.Codm
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Give every family a sound class: from weapon-classes.json, else inferred from the class bank its
+        /// skin banks borrow from, else "melee" for melee weapons. The class adds wpn_&lt;class&gt; to SharedBanks.
+        /// </summary>
+        private void LinkClasses(WwiseIndex wwise)
+        {
+            foreach (var family in Weapons.GroupBy(w => w.RootBase))
+            {
+                var root = family.Key;
+                string source = null;
+                var cls = ClassMap?.Get(root.Name, out source);
+                if (cls == null && root.Kind == WeaponKind.MeleeWeapon)
+                {
+                    cls = "melee";
+                    source = "kind";
+                }
+                // bank media sharing is not a class signal: skin banks borrow handling sounds from several wpn_* banks
+                ApplyClass(family.Concat(new[] { root }).Distinct(), cls, source, wwise);
+            }
+        }
+
+        private static string ClassFromBankName(string bankName)
+        {
+            if (bankName.StartsWith("wpn_", StringComparison.OrdinalIgnoreCase))
+            {
+                var c = bankName.Substring(4).ToLowerInvariant();
+                if (Array.IndexOf(WeaponClassMap.KnownClasses, c) >= 0)
+                    return c;
+            }
+            return null;
+        }
+
+        private static void ApplyClass(IEnumerable<WeaponEntry> members, string cls, string source, WwiseIndex wwise)
+        {
+            WwiseBankInfo classBank = cls != null ? wwise.PreferredCopy("wpn_" + cls) : null;
+            foreach (var m in members)
+            {
+                m.WeaponClass = cls;
+                m.WeaponClassSource = source;
+                if (classBank != null && !m.SharedBanks.Any(b => b.Name.Equals(classBank.Name, StringComparison.OrdinalIgnoreCase)))
+                    m.SharedBanks.Add(classBank);
+            }
+        }
+
+        /// <summary>Set (or clear with null) the sound class of a weapon's family and persist it to weapon-classes.json.</summary>
+        public void SetClass(WeaponEntry w, string cls)
+        {
+            var root = w.RootBase;
+            if (ClassMap == null)
+                ClassMap = new WeaponClassMap();
+            ClassMap.Set(root.Name, cls);
+            ClassMap.Save();
+            var members = Weapons.Where(x => x.RootBase == root).ToList();
+            foreach (var m in members)
+                m.SharedBanks.RemoveAll(b => ClassFromBankName(b.Name) != null);
+            if (wwiseIndex != null)
+                ApplyClass(members, cls, cls != null ? "map" : null, wwiseIndex);
+            else
+                foreach (var m in members) { m.WeaponClass = cls; m.WeaponClassSource = cls != null ? "map" : null; }
         }
 
         /// <summary>Lower-case name tokens that identify the weapon: its own name, normalized name and base name.</summary>

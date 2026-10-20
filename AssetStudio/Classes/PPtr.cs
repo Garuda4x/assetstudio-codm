@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace AssetStudio
 {
@@ -32,7 +32,9 @@ namespace AssetStudio
                 var assetsFileList = assetsManager.assetsFileList;
                 var assetsFileIndexCache = assetsManager.assetsFileIndexCache;
 
-                if (index == -2)
+                // -2: never looked up. -1: missing at the time of the lookup; retried after a later
+                // (additive) load has cleared the manager cache, so dependency paks resolve.
+                if (index == -2 || (index == -1 && !assetsFileIndexCache.ContainsKey(assetsFile.m_Externals[m_FileID - 1].fileName)))
                 {
                     var m_External = assetsFile.m_Externals[m_FileID - 1];
                     var name = m_External.fileName;

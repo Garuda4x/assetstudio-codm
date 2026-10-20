@@ -30,7 +30,8 @@ namespace AssetStudioGUI
         private TreeView weaponTree;
         private Label weaponInfo;
         private ListView assetList;
-        private CheckBox optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents;
+        private CheckBox optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents, optDeps;
+        private ComboBox classCombo;
         private Button btnLoad, btnAdd, btnExport, btnOpenFolder, btnCopy;
         private WeaponEntry current;
 
@@ -177,7 +178,18 @@ namespace AssetStudioGUI
             optFx = new CheckBox { Text = "FX textures", Checked = false, AutoSize = true };
             optBase = new CheckBox { Text = "Include base weapon", Checked = true, AutoSize = true };
             optComponents = new CheckBox { Text = "Include components", Checked = false, AutoSize = true };
-            options.Controls.AddRange(new Control[] { optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents });
+            optDeps = new CheckBox { Text = "Resolve dependencies (shared anims, controllers)", Checked = true, AutoSize = true };
+            options.Controls.AddRange(new Control[] { optModels, optTextures, optSounds, optWav, optFx, optBase, optComponents, optDeps });
+
+            var classRow = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 30, Padding = new Padding(4, 4, 4, 0) };
+            classRow.Controls.Add(new Label { Text = "Sound class of this family:", AutoSize = true, Padding = new Padding(0, 5, 4, 0) });
+            classCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110 };
+            classCombo.Items.Add("(unknown)");
+            foreach (var c in WeaponClassMap.KnownClasses)
+                classCombo.Items.Add(c);
+            classRow.Controls.Add(classCombo);
+            classRow.Controls.Add(MakeButton("Save class", (s, e) => SaveClass()));
+            classRow.Controls.Add(new Label { Text = "picks the wpn_<class> bank for base weapon sounds; saved to weapon-classes.json", AutoSize = true, Padding = new Padding(6, 5, 0, 0) });
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(4) };
             btnLoad = MakeButton("Load checked (replace)", async (s, e) => await LoadIntoMain(CheckedPaks(), false));
@@ -188,6 +200,7 @@ namespace AssetStudioGUI
             buttons.Controls.AddRange(new Control[] { btnLoad, btnAdd, btnExport, btnOpenFolder, btnCopy });
 
             split.Panel2.Controls.Add(assetList);
+            split.Panel2.Controls.Add(classRow);
             split.Panel2.Controls.Add(options);
             split.Panel2.Controls.Add(weaponInfo);
             split.Panel2.Controls.Add(buttons);
@@ -389,8 +402,9 @@ namespace AssetStudioGUI
             if (w.Base != null) info.Append($"   base chain: {string.Join(" -> ", w.Ancestors().Select(a => a.Folder))}");
             if (w.Skins.Count > 0) info.Append($"   skins: {w.Skins.Count}");
             info.AppendLine();
-            info.Append($"{w.Paks.Count} pak(s), {w.Components.Count} component(s), {w.Effects.Count} effect pak(s), {w.Banks.Count} own bank(s), {w.SharedBanks.Count} class bank(s)");
+            info.Append($"{w.Paks.Count} pak(s), {w.Components.Count} component(s), {w.Effects.Count} effect pak(s), {w.Banks.Count} own bank(s), {w.SharedBanks.Count} class bank(s), sound class: {w.WeaponClass ?? "unknown"}{(w.WeaponClassSource != null ? " (" + w.WeaponClassSource + ")" : "")}");
             weaponInfo.Text = info.ToString();
+            classCombo.SelectedIndex = w.WeaponClass != null ? Math.Max(0, classCombo.Items.IndexOf(w.WeaponClass)) : 0;
 
             var cfg = CodmSession.Config;
             AddGroup("Weapon paks", PakIndex.OrderForLoading(w.Paks, cfg), true);
@@ -456,6 +470,23 @@ namespace AssetStudioGUI
                 .ToArray();
         }
 
+        private void SaveClass()
+        {
+            if (current == null)
+                return;
+            var cls = classCombo.SelectedIndex > 0 ? classCombo.SelectedItem.ToString() : null;
+            try
+            {
+                CodmSession.Catalog.SetClass(current, cls);
+                Log($"{current.RootBase.Folder}: sound class {(cls ?? "cleared")} -> {CodmSession.Catalog.ClassMap.Path}");
+                ShowWeapon(current);
+            }
+            catch (Exception ex)
+            {
+                Log("Saving the class failed: " + ex.Message);
+            }
+        }
+
         private async Task LoadIntoMain(string[] paths, bool additive)
         {
             if (paths.Length == 0)
@@ -466,8 +497,8 @@ namespace AssetStudioGUI
             SetBusy(true);
             try
             {
-                Log($"{(additive ? "Adding" : "Loading")} {paths.Length} pak(s) into AssetStudio");
-                await owner.LoadPaksFromBrowser(paths, additive);
+                Log($"{(additive ? "Adding" : "Loading")} {paths.Length} pak(s) into AssetStudio{(optDeps.Checked ? " with dependencies" : "")}");
+                await owner.LoadPaksFromBrowser(paths, additive, optDeps.Checked, Log);
                 SetStatus($"{paths.Length} pak(s) loaded.");
             }
             catch (Exception ex)
@@ -497,6 +528,7 @@ namespace AssetStudioGUI
                 Effects = optFx.Checked,
                 IncludeBaseWeapon = optBase.Checked,
                 IncludeComponents = optComponents.Checked,
+                ResolveDependencies = optDeps.Checked,
             };
             var outRoot = cfg.ExportRootPath;
             using (var dlg = new FolderBrowserDialog { Description = "Export folder (a sub folder named after the weapon is created)", SelectedPath = Directory.Exists(outRoot) ? outRoot : "" })
@@ -511,8 +543,8 @@ namespace AssetStudioGUI
             try
             {
                 SetStatus($"Exporting {weapon.Folder}...");
-                var report = await Task.Run(() => CodmSession.CreateExportService().ExportWeapon(weapon, outRoot, options, Log));
-                SetStatus($"Exported {weapon.Folder}: {report.Models.Count} models, {report.Textures.Count} textures, {report.WemsExtracted} wems ({report.WemsConverted} wav), {report.Warnings.Count} warnings");
+                var report = await Task.Run(() => CodmSession.CreateExportService(Log).ExportWeapon(weapon, outRoot, options, Log));
+                SetStatus($"Exported {weapon.Folder}: {report.Models.Count} models, {report.Textures.Count} textures, {report.DependencyPaks.Count} dependency paks, {report.WemsExtracted} wems ({report.WemsConverted} wav), {report.Warnings.Count} warnings");
                 foreach (var warn in report.Warnings)
                     Log("  ! " + warn);
                 if (Properties.Settings.Default.openAfterExport)

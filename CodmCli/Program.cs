@@ -19,6 +19,7 @@ namespace CodmCli
         private static PakIndex pakIndex;
         private static WwiseIndex wwiseIndex;
         private static WeaponCatalog catalog;
+        private static CabIndex cabIndex;
 
         private static int Main(string[] args)
         {
@@ -48,6 +49,11 @@ namespace CodmCli
                     case "weapons": return CmdWeapons(opts);
                     case "weapon": return CmdWeapon(opts);
                     case "export": return CmdExport(opts);
+                    case "cabindex": return CmdCabIndex(opts);
+                    case "anims": return CmdAnims(opts);
+                    case "deps": return CmdDeps(opts);
+                    case "classes": return CmdClasses(opts);
+                    case "class": return CmdClass(opts);
                     case "banks": return CmdBanks(opts);
                     case "bank": return CmdBank(opts);
                     case "wems": return CmdWems(opts);
@@ -80,7 +86,12 @@ namespace CodmCli
             Console.WriteLine("  search <text>                  find paks by decoded name");
             Console.WriteLine("  weapons [filter] [--kind k]    list weapons (filter matches folder; --kind main|melee|throw|assi|special; --base)");
             Console.WriteLine("  weapon <id|folder|name>        show the paks, base weapon, skins, components, fx and banks of a weapon");
-            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--no-models] [--no-textures] [--no-base] [--components]");
+            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
+            Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
+            Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
+            Console.WriteLine("  deps <pak...>                  load bundle(s) and show which other paks they reference");
+            Console.WriteLine("  classes [--unknown]            sound class per weapon family (wpn_<class> bank)");
+            Console.WriteLine("  class <weapon> [<class>|-]     show or set the sound class of a weapon family (ar smg lmg sniper shotgun pistol launcher melee)");
             Console.WriteLine("  banks [filter]                 list sound banks");
             Console.WriteLine("  bank <name|path>               show a bank: events, actions, sounds and where their wems live");
             Console.WriteLine("  wems <bank> [--out d] [--wav]  extract every wem a bank uses (converted with vgmstream when --wav)");
@@ -110,7 +121,15 @@ namespace CodmCli
             if (catalog != null) return;
             EnsureIndex();
             if (withBanks) EnsureWwise();
-            catalog = WeaponCatalog.Build(pakIndex, withBanks ? wwiseIndex : null);
+            catalog = WeaponCatalog.Build(pakIndex, withBanks ? wwiseIndex : null, WeaponClassMap.Load(cfg));
+        }
+
+        private static CabIndex EnsureCabIndex(bool rebuild = false)
+        {
+            if (cabIndex != null && !rebuild) return cabIndex;
+            EnsureIndex();
+            cabIndex = CabIndex.Build(pakIndex, cfg, Console.Error.WriteLine, rebuild);
+            return cabIndex;
         }
 
         private static WeaponEntry ResolveWeapon(string query)
@@ -239,7 +258,7 @@ namespace CodmCli
 
         private static void PrintWeapon(WeaponEntry w)
         {
-            Console.WriteLine($"{w.Folder}  ({w.Kind}, id {w.Id}{(w.IsBase ? ", BASE weapon" : "")})");
+            Console.WriteLine($"{w.Folder}  ({w.Kind}, id {w.Id}{(w.IsBase ? ", BASE weapon" : "")}, sound class {w.WeaponClass ?? "?"}{(w.WeaponClassSource != null ? " [" + w.WeaponClassSource + "]" : "")})");
             if (w.Base != null)
                 Console.WriteLine($"  base chain  : {string.Join(" -> ", w.Ancestors().Select(a => a.Folder))}");
             if (w.Skins.Count > 0)
@@ -295,15 +314,158 @@ namespace CodmCli
                 IncludeBaseWeapon = !o.Has("no-base"),
                 IncludeComponents = o.Has("components"),
                 ConvertWem = !o.Has("no-wav"),
+                ResolveDependencies = !o.Has("no-deps"),
+                MaxDependencyPaks = o.GetInt("max-deps", 60),
+                AllPrefabCopies = o.Has("all-copies"),
             };
             if (string.IsNullOrEmpty(cfg.VgmstreamPath))
                 cfg.VgmstreamPath = WemTools.FindVgmstream() ?? "";
-            var svc = new CodmExportService(cfg, pakIndex, wwiseIndex);
+            var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => EnsureCabIndex());
             var report = svc.ExportWeapon(w, outRoot, options, Console.WriteLine);
-            Console.WriteLine($"models={report.Models.Count} textures={report.Textures.Count} banks={report.Banks.Count} wems={report.WemsExtracted} (wav {report.WemsConverted}) warnings={report.Warnings.Count}");
+            Console.WriteLine($"models={report.Models.Count} (+{report.SkippedPrefabCopies.Count} duplicate copies skipped) textures={report.Textures.Count} deps={report.DependencyPaks.Count} banks={report.Banks.Count} wems={report.WemsExtracted} (wav {report.WemsConverted}) warnings={report.Warnings.Count}");
             foreach (var warn in report.Warnings)
                 Console.WriteLine("  ! " + warn);
             Console.WriteLine(report.OutputDir);
+            return 0;
+        }
+
+        private static int CmdAnims(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("anims <weapon>"); return 2; }
+            EnsureCatalog();
+            var w = ResolveWeapon(o.Positional[0]);
+            if (w == null) return 1;
+            var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => EnsureCabIndex());
+            var paks = svc.SelectPaks(w, new WeaponExportOptions { IncludeBaseWeapon = !o.Has("no-base") });
+            var am = new AssetsManager();
+            try
+            {
+                am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
+                if (!o.Has("no-deps"))
+                    DependencyResolver.Resolve(am, EnsureCabIndex(), cfg, Console.WriteLine, maxPaks: o.GetInt("max-deps", 60));
+                var own = new HashSet<string>(paks.Select(p => p.FullPath), StringComparer.OrdinalIgnoreCase);
+                var loadedNames = new HashSet<string>(am.assetsFileList.Select(f => f.fileName), StringComparer.OrdinalIgnoreCase);
+                foreach (var file in am.assetsFileList)
+                {
+                    if (!own.Contains(file.originalPath ?? file.fullName ?? "")) continue;
+                    var localClips = file.Objects.Count(x => x is AnimationClip);
+                    foreach (var obj in file.Objects)
+                    {
+                        if (!(obj is Animator animator)) continue;
+                        animator.m_GameObject.TryGet(out var go);
+                        Console.WriteLine($"Animator '{go?.m_Name}'  file={file.fileName} ({PakName.Parse(Path.GetFileName(file.originalPath ?? "")).Decoded})  clips in same file={localClips}");
+                        var ctrlPtr = animator.m_Controller;
+                        var ctrlFile = ctrlPtr.m_FileID == 0 ? file.fileName : (ctrlPtr.m_FileID - 1 < file.m_Externals.Count ? file.m_Externals[ctrlPtr.m_FileID - 1].fileName : "?");
+                        if (!ctrlPtr.TryGet(out var rac))
+                        {
+                            Console.WriteLine($"  controller: UNRESOLVED (pathID {ctrlPtr.m_PathID} in {ctrlFile}{(loadedNames.Contains(ctrlFile) ? ", file loaded but object missing" : ", file not loaded")})");
+                            continue;
+                        }
+                        Console.WriteLine($"  controller: {rac.GetType().Name} '{rac.m_Name}' in {ctrlFile}");
+                        if (rac is AnimatorOverrideController aoc)
+                        {
+                            var resolved = 0; var missing = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var pair in aoc.m_Clips)
+                            {
+                                if (pair.m_OverrideClip.TryGet(out _)) { resolved++; continue; }
+                                var ext = pair.m_OverrideClip.m_FileID == 0 ? aoc.assetsFile.fileName : (pair.m_OverrideClip.m_FileID - 1 < aoc.assetsFile.m_Externals.Count ? aoc.assetsFile.m_Externals[pair.m_OverrideClip.m_FileID - 1].fileName : "?");
+                                missing[ext] = missing.TryGetValue(ext, out var n) ? n + 1 : 1;
+                            }
+                            Console.WriteLine($"  override clips: {aoc.m_Clips.Length} total, {resolved} resolved");
+                            foreach (var kv in missing.OrderByDescending(kv => kv.Value))
+                            {
+                                var paksFor = EnsureCabIndex().PaksFor(kv.Key);
+                                Console.WriteLine($"    {kv.Value,4} missing in {kv.Key}  ->  {(paksFor.Count == 0 ? "NOT IN ANY PAK" : string.Join(" | ", paksFor.Take(2).Select(p => "[" + p.Source + "] " + p.Name.Decoded)))}{(loadedNames.Contains(kv.Key) ? "  (loaded, object missing)" : "")}");
+                            }
+                            if (aoc.m_Controller.TryGet(out var baseRac))
+                                Console.WriteLine($"  base controller: {baseRac.GetType().Name} '{baseRac.m_Name}' clips={(baseRac as AnimatorController)?.m_AnimationClips?.Length ?? 0}");
+                            else
+                                Console.WriteLine($"  base controller: UNRESOLVED");
+                        }
+                        else if (rac is AnimatorController ac)
+                        {
+                            var resolved = ac.m_AnimationClips?.Count(c => c.TryGet(out _)) ?? 0;
+                            Console.WriteLine($"  controller clips: {ac.m_AnimationClips?.Length ?? 0} total, {resolved} resolved");
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                am.Clear();
+            }
+            return 0;
+        }
+
+        private static int CmdCabIndex(Options o)
+        {
+            var cabs = EnsureCabIndex(o.Has("rebuild"));
+            Console.WriteLine($"{cabs.CabCount} serialized files in {cabs.PakCount} paks, {cabs.Failed} unreadable; cache: {CabIndex.DefaultCachePath(cfg)}");
+            return 0;
+        }
+
+        private static int CmdDeps(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("deps <pak...>"); return 2; }
+            var cabs = EnsureCabIndex();
+            var am = new AssetsManager();
+            try
+            {
+                am.LoadFiles(o.Positional.ToArray());
+                foreach (var f in am.assetsFileList)
+                {
+                    Console.WriteLine($"{f.fileName}  ({Path.GetFileName(f.originalPath ?? f.fullName)})");
+                    foreach (var ext in f.m_Externals)
+                    {
+                        var paks = cabs.PaksFor(ext.fileName);
+                        var where = paks.Count == 0 ? "(not in any pak)" : string.Join(" | ", paks.Take(3).Select(p => $"[{p.Source}] {p.Name.Decoded}"));
+                        Console.WriteLine($"  -> {ext.fileName,-40} {where}");
+                    }
+                }
+                var report = DependencyResolver.Resolve(am, cabs, cfg, Console.WriteLine);
+                Console.WriteLine($"closure: {report.Loaded.Count} extra pak(s) in {report.Rounds} round(s), {report.Unresolved.Count} unresolved, {am.assetsFileList.Count} files loaded");
+            }
+            finally
+            {
+                am.Clear();
+            }
+            return 0;
+        }
+
+        private static int CmdClasses(Options o)
+        {
+            EnsureCatalog();
+            var families = catalog.Weapons.GroupBy(w => w.RootBase).OrderBy(g => g.Key.Kind).ThenBy(g => g.Key.Name).ToList();
+            var shown = 0;
+            foreach (var g in families)
+            {
+                var root = g.Key;
+                if (o.Has("unknown") && root.WeaponClass != null) continue;
+                Console.WriteLine($"{root.Folder,-48} {root.WeaponClass ?? "?",-8} {root.WeaponClassSource ?? "",-9} skins={g.Count(w => w != root),-3} banks={g.Sum(w => w.Banks.Count)}");
+                shown++;
+            }
+            Console.WriteLine($"{shown} families shown, {families.Count(f => f.Key.WeaponClass == null)} without a class; map file: {catalog.ClassMap?.Path}");
+            return 0;
+        }
+
+        private static int CmdClass(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("class <weapon> [<class>|-]"); return 2; }
+            EnsureCatalog();
+            var w = ResolveWeapon(o.Positional[0]);
+            if (w == null) return 1;
+            if (o.Positional.Count > 1)
+            {
+                var cls = o.Positional[1] == "-" ? null : o.Positional[1].ToLowerInvariant();
+                if (cls != null && Array.IndexOf(WeaponClassMap.KnownClasses, cls) < 0)
+                {
+                    Console.Error.WriteLine($"unknown class '{cls}'. Known: {string.Join(", ", WeaponClassMap.KnownClasses)}");
+                    return 2;
+                }
+                catalog.SetClass(w, cls);
+                Console.WriteLine($"{w.RootBase.Folder}: class {(cls ?? "(cleared)")} -> {catalog.ClassMap.Path}");
+            }
+            Console.WriteLine($"{w.Folder}: family {w.RootBase.Folder}, class {w.WeaponClass ?? "?"} ({w.WeaponClassSource ?? "none"}), class banks: {string.Join(", ", w.SharedBanks.Select(b => b.Name))}");
             return 0;
         }
 

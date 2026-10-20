@@ -5,17 +5,18 @@ namespace AssetStudio.Codm
     /// <summary>
     /// Decoder for CoD Mobile's obfuscated asset names (pak files, DataTableBytes, 0db.bytes entries).
     ///
-    /// The scheme is a fixed 13-pair letter swap with the case flipped, digits untouched,
+    /// The scheme is a fixed 13-pair letter swap with the case flipped, a 5-pair digit swap,
     /// '$' standing in for '/' and '!' for '.'. It is an involution: decoding twice gives the input back.
     ///
-    ///   a-p  c-l  e-m  d-j  i-z  n-v  o-u  r-t  s-f  w-x  g-h  b-k  q-y
+    ///   a-p  c-l  e-m  d-j  i-z  n-v  o-u  r-t  s-f  w-x  g-h  b-k  q-y     0-9  1-2  3-4  5-6  7-8
     ///
     /// Example: LUJ_EUJMCF$XMPAUVF$EPZVXMPAUV$EPZVXMPAUV_1648_CULOFTPZCHOV
-    ///       -> cod_models/weapons/mainweapon/mainweapon_1648_locusrailgun
+    ///       -> cod_models/weapons/mainweapon/mainweapon_2537_locusrailgun
+    /// (the container paths inside the bundle confirm the real id 2537)
     /// </summary>
     public static class CodmNameCipher
     {
-        private static readonly string[] Pairs = { "ap", "cl", "em", "dj", "iz", "nv", "ou", "rt", "sf", "wx", "gh", "bk", "qy" };
+        private static readonly string[] Pairs = { "ap", "cl", "em", "dj", "iz", "nv", "ou", "rt", "sf", "wx", "gh", "bk", "qy", "09", "12", "34", "56", "78" };
         private static readonly char[] Partner = new char[128];
 
         static CodmNameCipher()
@@ -43,6 +44,10 @@ namespace AssetStudio.Codm
                 {
                     var p = Partner[ch];
                     sb.Append(char.IsUpper(ch) ? char.ToLowerInvariant(p) : char.ToUpperInvariant(p));
+                }
+                else if (ch >= '0' && ch <= '9')
+                {
+                    sb.Append(Partner[ch]);
                 }
                 else
                 {

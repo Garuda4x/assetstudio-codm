@@ -21,19 +21,24 @@ Unity `5.6.4p4` modified, IL2CPP). Read only. Never run, patch or update the gam
 ## The name cipher
 
 Pak files, table files and `0db.bytes` entries use a reversible substitution: 13 letter pairs are
-swapped and the case is flipped; digits stay; `$` stands for `/` and `!` for `.`.
+swapped and the case is flipped, 5 digit pairs are swapped, `$` stands for `/` and `!` for `.`.
 
 ```
 a-p  c-l  e-m  d-j  i-z  n-v  o-u  r-t  s-f  w-x  g-h  b-k  q-y
+0-9  1-2  3-4  5-6  7-8
 ```
+
+The digit swap matters: the weapon ids in decoded pak names are the real game ids, the ones used by
+the prefab names inside the bundles and by the Wwise skin banks (`2537.bnk` belongs to
+`mainweapon_2537_locusrailgun`). Module names and version buckets decode too (`cn13.0`, `7.2`).
 
 `CodmNameCipher.Decode` / `codm decode`:
 
 ```
 LUJ_EUJMCF$XMPAUVF$EPZVXMPAUV$EPZVXMPAUV_1648_CULOFTPZCHOV.pak
-  -> cod_models/weapons/mainweapon/mainweapon_1648_locusrailgun
+  -> cod_models/weapons/mainweapon/mainweapon_2537_locusrailgun
 LUEEUV!8!1!LUJ_EUJMCF$XMPAUVF$EMCMMXMPAUV$EMCMMXMPAUV_992_BVZSM_ZX5.pak
-  -> common.8.1.cod_models/weapons/meleeweapon/meleeweapon_992_knife_iw5
+  -> common.7.2.cod_models/weapons/meleeweapon/meleeweapon_001_knife_iw6
 FLMVMF$EPA$LCQ$...$LCQ_FVPBM_AUTR#URGMT@1.pak
   -> scenes/map/cly/.../cly_snake_port#other@1
 aTUAMTRQeUJZSQjMFL_.bytes  -> PropertyModifyDesc_.bytes
@@ -41,9 +46,9 @@ aTUAMTRQeUJZSQjMFL_.bytes  -> PropertyModifyDesc_.bytes
 
 Pak name grammar (raw): `[module!ver!ver!]path[#category][@shard].pak`
 
-- `module` only exists for Puffer downloads: `common`, `normal_weapon_cn24.9`, `normal_baseweapon_cn5.9`,
-  `normal_role_cn24.9`, `mtx_meleeweapon_others_92`... The literal `.` inside a module name is a real
-  dot; `!` are the encoded ones. The version is always `8.1` in this install.
+- `module` only exists for Puffer downloads: `common`, `normal_weapon_cn13.0`, `normal_baseweapon_cn6.0`,
+  `normal_role_cn13.0`, `mtx_meleeweapon_others_01`... The literal `.` inside a module name is a real
+  dot; `!` are the encoded ones. The version is always `7.2` in this install.
 - `#category`: `tex`, `other`, `prefabs`, `fallback` for bundles split by content type.
 - `@n`: shard index for bundles split into several files.
 
@@ -66,16 +71,26 @@ Pak name grammar (raw): `[module!ver!ver!]path[#category][@shard].pak`
 
 ### Weapons: base, skins, modules
 
-A weapon folder such as `mainweapon_1648_locusrailgun` is one skin. The mesh lives in the **base**
-weapon folder (`mainweapon_293_locus`), shipped by `normal_baseweapon_*` modules. Skins start with the
+A weapon folder such as `mainweapon_2537_locusrailgun` is one skin. The mesh lives in the **base**
+weapon folder (`mainweapon_104_locus`), shipped by `normal_baseweapon_*` modules. Skins start with the
 base name, so the catalog links `locusrailgun -> locus` by longest prefix (cosmetic prefixes
-`legendary`, `mythic`, `baseversion`, `epic` and version suffixes `v72` are ignored for matching).
-Chains exist: `vectork29redgundouble -> vectork29redgun -> vectork29`.
+`legendary`, `mythic`, `baseversion`, `epic`, version suffixes `v81` and underscores are ignored).
+Chains exist: `vectork10redgundouble -> vectork10redgun -> vectork10`.
 
 Every module copy of a path is a different bundle (different CAB) holding a slice of the weapon:
-a 2 KB `normal_weapon_cn0.9` pak may only carry an `AssetBundle` object, `common` a texture, the
-streaming copy the prefabs and clips. An export loads all copies; `AssetsManager` skips CABs it has
-already seen by name.
+a 2 KB `normal_weapon_cn9.0` pak may only carry an `AssetBundle` object, `common` a texture, the
+streaming copy the prefabs. An export loads all copies; `AssetsManager` skips CABs it has already
+seen by name. Prefabs that exist in several copies are exported once (the copy with the most clips).
+
+### Bundle dependencies
+
+Weapon bundles do not contain their animations. The prefab's `AnimatorOverrideController` lives in a
+small controller bundle and its clips in the shared packs (`cod_models/weapons/animations/1p`, `br`,
+`unarmed`...), referenced through `SerializedFile.m_Externals` by CAB name. `CabIndex` maps every CAB
+name to its pak by reading only bundle headers (`cache/cab-index.json`); `DependencyResolver` loads
+the referenced paks in rounds (animations, controllers and avatars first; shaders, effects and scenes
+are skipped). A few skins reference controller bundles that are not on disk; they reuse the base
+weapon's clips. Third-person prefabs have no controller at all (assigned at runtime).
 
 ## Config tables (encrypted)
 
@@ -96,10 +111,13 @@ derives relations from names.
 
 - Bank version 135, no `STID` section, so bank files carry no names other than their file name.
 - 2 187 distinct bank names in 3 819 files (copies per language and quality tree).
-- **Numeric banks** `130.bnk`, `130d.bnk`, `130p3.bnk`, `12888a.bnk`: custom sound sets of a weapon
-  skin, numbered by the skin id; letters are variants, `p3` is a third-person set.
+- **Numeric banks** `249.bnk`, `249d.bnk`, `249p3.bnk`, `80a.bnk`: custom sound sets of a weapon
+  skin or base weapon, numbered by the real weapon id; letters are variants, `p3` is a third-person set.
 - **Class banks** `wpn_ar`, `wpn_smg`, `wpn_sniper`, `wpn_lmg`, `wpn_shotgun`, `wpn_pistol`,
-  `wpn_melee`, `wpn_launcher`: base weapon sounds. Skin banks reference media embedded in these.
+  `wpn_melee`, `wpn_launcher`: base weapon sounds. Which one a weapon uses is not derivable from the
+  files (skin banks borrow handling sounds from several of them), so it comes from the weapon class
+  list (`WeaponClassMap`: built-in seed plus `weapon-classes.json`). `247.bnk` is a shared bank many
+  weapons borrow from.
 - Others: `Music_RedGun_<weapon>`, `vox_*` (1 100+ voice banks), `Amb_MP_*`, `BR_*`, `CLY_*`, `UI_*`.
 - Sound objects in a bank reference wem ids that may be embedded in **another** bank. A global
   media index over every bank's `DIDX` plus the loose `<id>.wem` files resolves 99.95 % of them.

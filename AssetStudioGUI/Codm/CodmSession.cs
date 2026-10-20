@@ -16,6 +16,7 @@ namespace AssetStudioGUI
         public static PakIndex Index { get; private set; }
         public static WwiseIndex Wwise { get; private set; }
         public static WeaponCatalog Catalog { get; private set; }
+        public static CabIndex Cabs { get; private set; }
         public static bool IsLoaded => Catalog != null;
 
         private static Task loadTask;
@@ -44,6 +45,7 @@ namespace AssetStudioGUI
                     Index = null;
                     Wwise = null;
                     Catalog = null;
+                    Cabs = null;
                     loadTask = null;
                 }
                 if (loadTask == null)
@@ -56,7 +58,7 @@ namespace AssetStudioGUI
                         progress?.Invoke("CODM: indexing sound banks...");
                         var wwise = WwiseIndex.Build(Config, progress);
                         progress?.Invoke("CODM: building weapon catalog...");
-                        var catalog = WeaponCatalog.Build(index, wwise);
+                        var catalog = WeaponCatalog.Build(index, wwise, WeaponClassMap.Load(Config));
                         Index = index;
                         Wwise = wwise;
                         Catalog = catalog;
@@ -67,9 +69,20 @@ namespace AssetStudioGUI
             }
         }
 
-        public static CodmExportService CreateExportService()
+        /// <summary>CAB -> pak index for dependency loading; built on first use (a minute the first time, cached after).</summary>
+        public static CabIndex EnsureCabIndex(Action<string> progress = null)
         {
-            return new CodmExportService(Config, Index, Wwise);
+            lock (gate)
+            {
+                if (Cabs == null)
+                    Cabs = CabIndex.Build(Index, Config, progress);
+                return Cabs;
+            }
+        }
+
+        public static CodmExportService CreateExportService(Action<string> progress = null)
+        {
+            return new CodmExportService(Config, Index, Wwise, () => EnsureCabIndex(progress));
         }
     }
 }

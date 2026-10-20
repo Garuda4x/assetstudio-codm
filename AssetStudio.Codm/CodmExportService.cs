@@ -16,6 +16,11 @@ namespace AssetStudio.Codm
         public bool IncludeBaseWeapon { get; set; } = true;
         public bool IncludeComponents { get; set; } = false;
         public bool ConvertWem { get; set; } = true;
+        /// <summary>Load the bundles the weapon paks reference (shared animations, controllers, avatars).</summary>
+        public bool ResolveDependencies { get; set; } = true;
+        public int MaxDependencyPaks { get; set; } = 60;
+        /// <summary>Export every copy of a prefab that appears in several bundles instead of the first one.</summary>
+        public bool AllPrefabCopies { get; set; } = false;
     }
 
     public sealed class WeaponExportReport
@@ -23,7 +28,10 @@ namespace AssetStudio.Codm
         public string Weapon { get; set; }
         public string OutputDir { get; set; }
         public List<string> PaksLoaded { get; } = new List<string>();
+        public List<string> DependencyPaks { get; } = new List<string>();
+        public List<string> UnresolvedReferences { get; } = new List<string>();
         public List<string> Models { get; } = new List<string>();
+        public List<string> SkippedPrefabCopies { get; } = new List<string>();
         public List<string> Textures { get; } = new List<string>();
         public List<string> Banks { get; } = new List<string>();
         public List<string> Effects { get; } = new List<string>();
@@ -41,12 +49,14 @@ namespace AssetStudio.Codm
         private readonly CodmConfig cfg;
         private readonly PakIndex index;
         private readonly WwiseIndex wwise;
+        private readonly Func<CabIndex> cabIndexProvider;
 
-        public CodmExportService(CodmConfig cfg, PakIndex index, WwiseIndex wwise)
+        public CodmExportService(CodmConfig cfg, PakIndex index, WwiseIndex wwise, Func<CabIndex> cabIndexProvider = null)
         {
             this.cfg = cfg;
             this.index = index;
             this.wwise = wwise;
+            this.cabIndexProvider = cabIndexProvider;
         }
 
         /// <summary>The pak files that make up a weapon export, in load order (download modules first).</summary>
@@ -76,10 +86,27 @@ namespace AssetStudio.Codm
                     log($"[Export] {w.Folder}: loading {paks.Count} pak(s)");
                     am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
                     report.PaksLoaded.AddRange(paks.Select(p => p.FullPath));
+
+                    if (o.ResolveDependencies && o.Models)
+                    {
+                        var cabs = cabIndexProvider?.Invoke();
+                        if (cabs == null)
+                        {
+                            log("[Deps] no CAB index available, dependencies not resolved");
+                        }
+                        else
+                        {
+                            var deps = DependencyResolver.Resolve(am, cabs, cfg, log, maxPaks: o.MaxDependencyPaks);
+                            report.DependencyPaks.AddRange(deps.Loaded.Select(p => p.FullPath));
+                            report.UnresolvedReferences.AddRange(deps.Unresolved);
+                        }
+                    }
+
+                    var weaponFiles = new HashSet<string>(report.PaksLoaded, StringComparer.OrdinalIgnoreCase);
                     if (o.Models)
-                        ExportModels(am, Path.Combine(dir, "models"), report, log);
+                        ExportModels(am, Path.Combine(dir, "models"), report, log, weaponFiles, o.AllPrefabCopies);
                     if (o.Textures)
-                        ExportTextures(am, Path.Combine(dir, "textures"), report, log);
+                        ExportTextures(am, Path.Combine(dir, "textures"), report, log, weaponFiles);
                 }
                 finally
                 {
@@ -98,21 +125,59 @@ namespace AssetStudio.Codm
             return report;
         }
 
-        /// <summary>Export every Animator (with the clips its controller references) and every renderer-only root as Cast.</summary>
-        public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log)
+        /// <summary>
+        /// Export every Animator (with the clips its controller references) and every renderer-only root
+        /// as Cast. Only objects from the weapon's own paks are exported (dependency paks just resolve
+        /// references). A prefab that exists in several bundles is exported once unless requested.
+        /// </summary>
+        public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null, bool allPrefabCopies = false)
         {
             var exportedRoots = new HashSet<GameObject>();
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             CastExporter.SkipEmptyAnimations = true;
-            foreach (var file in am.assetsFileList)
+
+            bool IsOwn(SerializedFile f) => ownBundles == null || ownBundles.Contains(f.originalPath ?? f.fullName ?? "");
+
+            // Every module copy of a prefab is a candidate; the copy whose controller resolves the most
+            // clips wins (a stripped copy with no controller often sits next to the real one).
+            var candidates = new List<(Animator animator, GameObject go, SerializedFile file, AnimationClip[] clips)>();
+            foreach (var file in am.assetsFileList.Where(IsOwn))
             {
                 foreach (var obj in file.Objects)
                 {
-                    if (!(obj is Animator animator))
+                    if (!(obj is Animator animator) || !animator.m_GameObject.TryGet(out var go))
                         continue;
-                    if (!animator.m_GameObject.TryGet(out var go))
-                        continue;
-                    var clips = ClipsForAnimator(animator, file);
+                    candidates.Add((animator, go, file, ClipsForAnimator(animator, file)));
+                }
+            }
+            var ordered = allPrefabCopies
+                ? candidates
+                : candidates.GroupBy(c => SafeName(c.go.m_Name), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.OrderByDescending(c => c.clips.Length).ThenBy(c => cfg.SourceRank(SourceOf(c.file))).First())
+                    .ToList();
+            foreach (var c in candidates)
+                if (!ordered.Contains(c))
+                    report.SkippedPrefabCopies.Add($"{c.go.m_Name} ({SourceLabel(c.file)}, {c.clips.Length} clips)");
+
+            foreach (var cand in ordered)
+            {
+                var animator = cand.animator;
+                var go = cand.go;
+                var file = cand.file;
+                var clips = cand.clips;
+                if (clips.Length == 0)
+                {
+                    // a skin whose own controller bundle is missing: reuse the clips of the base weapon's
+                    // prefab with the same role suffix (_1P, _3P, _UI)
+                    var suffix = RoleSuffix(go.m_Name);
+                    var donor = ordered.FirstOrDefault(o => o.go != go && o.clips.Length > 0 && RoleSuffix(o.go.m_Name) == suffix);
+                    if (donor.go != null)
+                    {
+                        clips = donor.clips;
+                        log($"[Export] {go.m_Name}: no clips of its own, using the {clips.Length} clip(s) of {donor.go.m_Name}");
+                    }
+                }
+                {
                     var name = UniqueName(usedNames, go.m_Name, SourceLabel(file));
                     try
                     {
@@ -121,7 +186,9 @@ namespace AssetStudio.Codm
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
                         report.Models.Add(modelDir);
                         exportedRoots.Add(go);
-                        log($"[Export] model {name}: {conv.MeshList.Count} mesh(es), {clips.Length} clip(s)");
+                        var animDir = Path.Combine(modelDir, "anims");
+                        var written = Directory.Exists(animDir) ? Directory.GetFiles(animDir, "*.cast").Length : 0;
+                        log($"[Export] model {name}: {conv.MeshList.Count} mesh(es), {clips.Length} clip(s) found, {written} written");
                     }
                     catch (Exception ex)
                     {
@@ -132,7 +199,7 @@ namespace AssetStudio.Codm
             }
 
             // roots that have renderers but no Animator (static parts, UI/3P variants)
-            foreach (var file in am.assetsFileList)
+            foreach (var file in am.assetsFileList.Where(IsOwn))
             {
                 foreach (var obj in file.Objects)
                 {
@@ -142,6 +209,11 @@ namespace AssetStudio.Codm
                         continue; // not a root
                     if (exportedRoots.Contains(go) || HasAnimatorInTree(go) || !HasRendererInTree(go))
                         continue;
+                    if (!allPrefabCopies && usedNames.Contains(SafeName(go.m_Name)))
+                    {
+                        report.SkippedPrefabCopies.Add($"{go.m_Name} ({SourceLabel(file)})");
+                        continue;
+                    }
                     var name = UniqueName(usedNames, go.m_Name, SourceLabel(file));
                     try
                     {
@@ -158,11 +230,14 @@ namespace AssetStudio.Codm
                     }
                 }
             }
+            if (report.SkippedPrefabCopies.Count > 0)
+                log($"[Export] {report.SkippedPrefabCopies.Count} duplicate prefab copies skipped (other module copies of the same prefab)");
         }
 
         /// <summary>
         /// Clips that belong to an Animator: from its AnimatorController, or the override clips of its
-        /// AnimatorOverrideController. Falls back to every clip in the same serialized file.
+        /// AnimatorOverrideController (plus the controller's own clips when nothing is overridden).
+        /// Falls back to every clip in the same serialized file.
         /// </summary>
         public static AnimationClip[] ClipsForAnimator(Animator animator, SerializedFile file)
         {
@@ -230,17 +305,19 @@ namespace AssetStudio.Codm
             return false;
         }
 
-        public void ExportTextures(AssetsManager am, string dir, WeaponExportReport report, Action<string> log)
+        public void ExportTextures(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null)
         {
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var count = 0;
             foreach (var file in am.assetsFileList)
             {
+                if (ownBundles != null && !ownBundles.Contains(file.originalPath ?? file.fullName ?? ""))
+                    continue;
                 foreach (var obj in file.Objects)
                 {
                     if (!(obj is Texture2D tex))
                         continue;
-                    var name = UniqueName(usedNames, tex.m_Name);
+                    var name = UniqueName(usedNames, tex.m_Name, SourceLabel(file));
                     try
                     {
                         var image = tex.ConvertToImage(true);
@@ -270,12 +347,13 @@ namespace AssetStudio.Codm
 
         public void ExportSounds(WeaponEntry w, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log)
         {
-            if (w.Banks.Count == 0)
+            var banks = w.Banks.Concat(w.SharedBanks).Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (banks.Count == 0)
             {
-                log("[Export] no sound banks linked to this weapon");
+                log("[Export] no sound banks linked to this weapon (set its sound class to get the wpn_<class> bank)");
                 return;
             }
-            foreach (var bankName in w.Banks.Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var bankName in banks)
             {
                 var bank = wwise.PreferredCopy(bankName);
                 if (bank == null)
@@ -326,14 +404,38 @@ namespace AssetStudio.Codm
             }
         }
 
-        /// <summary>"streaming", "common", "normal_weapon_cn24.9"... for the bundle a serialized file came from.</summary>
+        /// <summary>"_1p", "_3p", "_ui", "_3p_br"... the role part of a weapon prefab name, lower case.</summary>
+        private static string RoleSuffix(string prefabName)
+        {
+            if (string.IsNullOrEmpty(prefabName))
+                return "";
+            var n = prefabName.ToLowerInvariant();
+            foreach (var tag in new[] { "_1p", "_3p", "_ui" })
+            {
+                var i = n.IndexOf(tag, StringComparison.Ordinal);
+                if (i >= 0)
+                    return n.Substring(i);
+            }
+            return "";
+        }
+
+        private string SourceOf(SerializedFile file)
+        {
+            var bundlePath = file.originalPath ?? file.fullName;
+            var entry = index?.Entries.FirstOrDefault(e => string.Equals(e.FullPath, bundlePath, StringComparison.OrdinalIgnoreCase));
+            return entry?.Source ?? "streaming";
+        }
+
+        /// <summary>Short tag for the bundle a serialized file came from: "streaming", "common", "cn13.0"...</summary>
         private string SourceLabel(SerializedFile file)
         {
             var bundlePath = file.originalPath ?? file.fullName;
             var entry = index?.Entries.FirstOrDefault(e => string.Equals(e.FullPath, bundlePath, StringComparison.OrdinalIgnoreCase));
-            if (entry != null)
-                return entry.Name.Module ?? entry.Source;
-            return PakName.Parse(Path.GetFileName(bundlePath ?? "")).Module ?? "bundle";
+            var module = entry != null ? entry.Name.Module : PakName.Parse(Path.GetFileName(bundlePath ?? "")).Module;
+            if (module == null)
+                return entry?.Source ?? "bundle";
+            var us = module.LastIndexOf('_');
+            return us >= 0 && us < module.Length - 1 ? module.Substring(us + 1) : module;
         }
 
         private static string UniqueName(HashSet<string> used, string name, string sourceLabel = null)

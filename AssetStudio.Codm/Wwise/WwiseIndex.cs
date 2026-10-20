@@ -162,10 +162,10 @@ namespace AssetStudio.Codm.Wwise
             return NumericBank.IsMatch(name);
         }
 
-        /// <summary>Names of the banks that embed the media this bank's Sound objects reference (itself included).</summary>
-        public HashSet<string> ReferencedBankNames(WwiseBankInfo info)
+        /// <summary>Banks that embed the media this bank's Sound objects reference (itself included), with how many sounds each one provides.</summary>
+        public Dictionary<string, int> ReferencedBankNames(WwiseBankInfo info)
         {
-            var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             WwiseBank bank;
             try
             {
@@ -178,7 +178,10 @@ namespace AssetStudio.Codm.Wwise
             foreach (var id in bank.SourceIds())
             {
                 if (Media.TryGetValue(id, out var media))
-                    result.Add(Path.GetFileNameWithoutExtension(media.BankPath));
+                {
+                    var name = Path.GetFileNameWithoutExtension(media.BankPath);
+                    result[name] = result.TryGetValue(name, out var n) ? n + 1 : 1;
+                }
             }
             return result;
         }

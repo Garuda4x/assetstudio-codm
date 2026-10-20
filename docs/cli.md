@@ -13,7 +13,12 @@ walking up from the exe directory, so the copy at the repository root is used). 
 | `codm search <text> [--max n]` | paks whose decoded name or raw file name contains the text |
 | `codm weapons [filter] [--kind main\|melee\|throw\|assi\|special] [--base] [--no-banks]` | weapon table: paks, base, skins, fx, own banks, class banks |
 | `codm weapon <id\|folder\|name>` | one weapon: paks, base chain paks, components, effects, sound banks, class banks |
-| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--fx] [--no-base] [--components]` | export to `<out>/<weapon folder>/` |
+| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps` |
+| `codm anims <weapon> [--no-deps]` | per Animator prefab: its controller, how many clips resolve and in which bundle the missing ones live |
+| `codm cabindex [--rebuild]` | build or refresh the CAB -> pak index (`cache/cab-index.json`) |
+| `codm deps <pak...>` | external bundles a pak references and which paks provide them |
+| `codm classes [--unknown]` | sound class of every weapon family (map, seed, kind or unknown) |
+| `codm class <weapon> [<class>\|-]` | show or set the family's sound class in `weapon-classes.json` |
 | `codm banks [filter]` | distinct bank names with copy count, embedded media count, size, languages |
 | `codm bank <name\|path>` | one bank: objects, events with their actions, sounds with codec and where the wem lives |
 | `codm wems <bank> [--out dir] [--wav]` | extract every wem the bank references (resolved across banks), convert with vgmstream when `--wav` |
@@ -26,25 +31,26 @@ walking up from the exe directory, so the copy at the repository root is used). 
 ```
 > codm weapons locus
 folder                                               paks base                   skins  fx banks class
-mainweapon_232_locusboomscrawl                          2 locus                      0   2     0     0
-mainweapon_293_locus                                   12 *                         10   2     0     0
-mainweapon_1648_locusrailgun                            6 locus                      0   2     0     0
+mainweapon_104_locus                                   12 *                         10   2     0     1
+mainweapon_2537_locusrailgun                            6 locus                      0   2     0     1
 ...
 
-> codm weapon 130
-mainweapon_130_vectork29redgundouble  (MainWeapon, id 130)
-  base chain  : mainweapon_138_vectork29redgun -> mainweapon_924_vectork29
+> codm weapon 249
+mainweapon_249_vectork10redgundouble  (MainWeapon, id 249, sound class smg [seed])
+  base chain  : mainweapon_138_vectork10redgun -> mainweapon_013_vectork10
   paks (3): ...
-  sound banks (7): 130, 130d, 130e, 130f, 130g, 130p3, Music_RedGun_Vector
-  class banks (1, media borrowed by the family's skin banks): wpn_ar
+  sound banks (7): 249, 249d, 249e, 249f, 249g, 249p3, Music_RedGun_Vector
+  class banks (4, media borrowed by the family's skin banks): wpn_smg, wpn_pistol, wpn_ar, vox_global
 
-> codm export meleeweapon_992_knife_iw5 --out D:\exports --no-sounds
-[Export] model MeleeWeapon_001_Knife_iw6_1P: 1 mesh(es), 119 clip(s)
-...
-models=8 textures=18 banks=0 wems=0 (wav 0) warnings=0
+> codm export 2537 --out D:\exports --no-textures
+[Deps] round 1: 34 external file(s) referenced, loading 31 pak(s)
+[Export] MainWeapon_2537_LocusRailgun_1P: no clips of its own, using the 34 clip(s) of MainWeapon_104_Locus_1P
+[Export] model MainWeapon_2537_LocusRailgun_1P: 1 mesh(es), 34 clip(s) found, 34 written
+[Wwise] wpn_sniper: 337/337 wems extracted, 0 converted, 0 unresolved
+models=6 (+6 duplicate copies skipped) textures=0 deps=60 banks=1 wems=337 (wav 0) warnings=0
 
-> codm bank 130
-130  version=135 id=2155168453 size=1.6 MB sections=BKHD,DIDX,DATA,HIRC
+> codm bank 249
+249  version=135 id=2155168453 size=1.6 MB sections=BKHD,DIDX,DATA,HIRC
 objects: Sound=89, Action=52, Event=18, RandomSeq=32, Switch=10, ActorMixer=14, Layer=8, FxShareSet=1
 events (18):
   423327215   Play->472613036  Play->873221156  Stop->208988382 ...
