@@ -13,7 +13,7 @@ or updated from this machine; the tooling only reads files.**
 | Area | Status |
 |---|---|
 | Models (skinned meshes, skeleton, bind pose, weights, materials) | works, `.cast` primary, GLB/FBX optional |
-| Animations (CoD Mobile quantized dense clips) | works, see [docs/codm-formats.md](docs/codm-formats.md) |
+| Animations (CoD Mobile quantized dense clips) | works, see [docs/codm-formats.md](docs/codm-formats.md); `_Camera` clips are merged into their animation on a `Camera` bone |
 | Textures (DXT1/DXT5/BC7, streamed `.resS`) | works, png by default |
 | Pak navigation | obfuscated names are decoded (letters and digits); weapons grouped as base + skins |
 | Bundle dependencies | shared animation packs, controllers and avatars are loaded automatically (CAB index) |

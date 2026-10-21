@@ -216,6 +216,7 @@ namespace AssetStudio.Codm
                     try
                     {
                         var conv = new ModelConverter(animator, cfg.ImageFormat, clips.Length > 0 ? clips : null);
+                        CameraTrackMerger.Merge(conv, log);
                         var modelDir = Path.Combine(dir, name);
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
                         report.Models.Add(modelDir);

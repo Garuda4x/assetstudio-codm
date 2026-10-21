@@ -109,11 +109,23 @@ accordingly and never writes constant keys over dense channels (Equip must start
 - `CodmWeaponHandFollow` (off by default) re-anchors `Bone01` to `b_RightHand` when quantized clips
   under-drive the weapon.
 
-### Camera / orphan clips
+### Camera clips
 
-Clips that only animate the Animator root (path hash 0) have no skeleton to land on.
-`OrphanAnimationClipConverter` builds a one-bone `Camera` hierarchy for them; it is an explicit
-exception path in the GUI (Export > "EXCEPTION: Orphan/Camera clips").
+Every first-person animation has a sibling `<name>_Camera` clip (`..._1P_M_FireLeft_Camera`) that
+animates the Animator root (path hash 0, three Transform bindings): the camera motion. The rig has no
+bone for the root, so on its own such a clip exports as an empty animation.
+
+`CameraTrackMerger` runs before every Cast/FBX/GLB write (weapon export, Animator export, GameObject
+export): it adds a `Camera` bone under the rig root and moves each camera clip's root curves onto it
+inside the partner animation, so one `FireLeft.cast` carries arms, weapon and camera. Only rigs the
+partner animation actually drives (the first-person arms) get the bone; on third-person and UI
+prefabs the camera clips are dropped. Camera clips whose motion sits only
+in the undecoded CODM dense blob (`streamed curves = 0`, e.g. the knife's `Fire_Camera`) have no
+curves and are dropped with a log line; `FireLeft_Camera` / `FireRight_Camera` / `ProneCrawlLT_Camera`
+carry streamed curves and merge.
+
+The older `OrphanAnimationClipConverter` path (Export > "EXCEPTION: Orphan/Camera clips") still
+exists for inspecting a camera clip alone.
 
 ## Export
 

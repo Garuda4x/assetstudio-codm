@@ -898,6 +898,7 @@ namespace AssetStudioGUI
             var convert = clips != null
                 ? new ModelConverter(m_Animator, Properties.Settings.Default.convertType, clips)
                 : new ModelConverter(m_Animator, Properties.Settings.Default.convertType);
+            CameraTrackMerger.Merge(convert, Logger.Info);
             ExportFbx(convert, exportFullPath);
             ExportCompanionFormats(convert, exportFullPath);
             return true;
@@ -1042,6 +1043,7 @@ namespace AssetStudioGUI
             var convert = clips != null
                 ? new ModelConverter(gameObject, Properties.Settings.Default.convertType, clips)
                 : new ModelConverter(gameObject, Properties.Settings.Default.convertType);
+            CameraTrackMerger.Merge(convert, Logger.Info);
             exportPath = exportPath + FixFileName(gameObject.m_Name) + ".fbx";
             ExportFbx(convert, exportPath);
             ExportCompanionFormats(convert, exportPath);
@@ -1054,6 +1056,7 @@ namespace AssetStudioGUI
             var convert = clips != null
                 ? new ModelConverter(rootName, gameObject, Properties.Settings.Default.convertType, clips)
                 : new ModelConverter(rootName, gameObject, Properties.Settings.Default.convertType);
+            CameraTrackMerger.Merge(convert, Logger.Info);
             ExportFbx(convert, exportPath);
             ExportCompanionFormats(convert, exportPath);
         }
