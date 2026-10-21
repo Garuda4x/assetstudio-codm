@@ -77,7 +77,13 @@ namespace AssetStudio
                 track.Scalings.AddRange(rootTrack.Scalings);
 
                 var partnerName = PartnerName(cam.Name);
-                var partner = imported.AnimationList.FirstOrDefault(a => a != cam && string.Equals(a.Name, partnerName, StringComparison.OrdinalIgnoreCase));
+                // several clips can share a short name (Fire, Fire_1 ...: knife, karambit, BR variants);
+                // take the one that drives the most bones of this rig
+                var partner = imported.AnimationList
+                    .Where(a => a != cam && !IsCameraClipName(a.Name) && IsSameOrNumberedName(a.Name, partnerName))
+                    .OrderByDescending(a => KeyedBoneTrackCount(a, root))
+                    .ThenBy(a => a.Name.Length)
+                    .FirstOrDefault();
                 // only rigs that the partner animation actually drives (the first-person arms) get the camera;
                 // on third-person / UI rigs the partner has no keyed bones and the camera track is meaningless
                 if (partner != null && HasKeyedBoneTrack(partner, root))
@@ -109,15 +115,32 @@ namespace AssetStudio
         /// <summary>True when the animation keys at least one real bone of this rig (not the root, not the camera).</summary>
         private static bool HasKeyedBoneTrack(ImportedKeyframedAnimation anim, ImportedFrame root)
         {
-            if (anim.TrackList == null) return false;
+            return KeyedBoneTrackCount(anim, root) > 0;
+        }
+
+        private static int KeyedBoneTrackCount(ImportedKeyframedAnimation anim, ImportedFrame root)
+        {
+            if (anim.TrackList == null) return 0;
+            var n = 0;
             foreach (var t in anim.TrackList)
             {
                 if (IsRootPath(t.Path, root)) continue;
                 if (t.Path != null && t.Path.EndsWith("/" + CameraBoneName, StringComparison.Ordinal)) continue;
                 if (t.Rotations.Count > 0 || t.Translations.Count > 0 || t.Scalings.Count > 0)
-                    return true;
+                    n++;
             }
-            return false;
+            return n;
+        }
+
+        /// <summary>"Fire" matches "Fire" and the unique-name variants "Fire_1", "Fire_2".</summary>
+        private static bool IsSameOrNumberedName(string name, string wanted)
+        {
+            if (string.Equals(name, wanted, StringComparison.OrdinalIgnoreCase)) return true;
+            if (name == null || name.Length <= wanted.Length + 1) return false;
+            if (!name.StartsWith(wanted, StringComparison.OrdinalIgnoreCase) || name[wanted.Length] != '_') return false;
+            for (var i = wanted.Length + 1; i < name.Length; i++)
+                if (!char.IsDigit(name[i])) return false;
+            return true;
         }
 
         private static bool IsRootPath(string path, ImportedFrame root)
