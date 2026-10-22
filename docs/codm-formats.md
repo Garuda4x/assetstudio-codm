@@ -127,6 +127,25 @@ carry streamed curves and merge.
 The older `OrphanAnimationClipConverter` path (Export > "EXCEPTION: Orphan/Camera clips") still
 exists for inspecting a camera clip alone.
 
+### Animation events (notetracks)
+
+The clips carry Unity `AnimationEvent`s and CoD Mobile keys its weapon audio on them. Two kinds:
+
+- semantic triggers with an empty data string: `PlayFirstAttackSound`, `PlaySecondAttackSound`,
+  `PlayStabSound`, `PlayRaiseSound`, `PlayPutDownSound`, `PlayInspectionSound1/2`, `PlayClipInSound`,
+  `PlayClipOutSound`, `PlayBoltBackAndReleaseSound`, `FiringEvent`. The game resolves them to the
+  weapon's Wwise events through its (encrypted) sound config;
+- `PlayEventSound` / `PlayEventSoundAnyCase` with ids in `data`: a plain number is a Wwise event id
+  (`347825172` is an event in `MP_GEN.bnk`); the 64-bit pairs `562950372539117~1125900325960429|8`
+  are config-table ids (tag in the high bits, the same low 32 bits in both halves), not Wwise hashes,
+  so they cannot be followed into a bank without the tables.
+
+`ModelConverter` copies the events and `CastExporter` writes them as Cast notification tracks, so the
+`.cast` animations already carry the triggers with their frame. `AnimationSoundMap` additionally writes
+`anims/notetracks.txt` per prefab (time, function, decoded Wwise ids with bank, and a "guessed" column
+listing the events in the weapon's banks whose recovered name fits the function), and the wems of
+directly referenced Wwise events land in `sounds/_from_animation_events/`.
+
 ## Export
 
 - `.cast` (dtzxporter Cast) is the primary model and animation format: Z-up, model-space vertices,

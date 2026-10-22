@@ -157,7 +157,7 @@ namespace AssetStudio.Codm.Wwise
                 return null;
             return copies
                 .OrderBy(b => b.Language == null ? 0 : (string.Equals(b.Language, preferredLanguage, StringComparison.OrdinalIgnoreCase) ? 1 : 2))
-                .ThenBy(b => b.HighQuality ? 1 : 0)
+                .ThenBy(b => b.HighQuality ? 0 : 1) // Windows_HQ copies first when the game shipped one
                 .First();
         }
 

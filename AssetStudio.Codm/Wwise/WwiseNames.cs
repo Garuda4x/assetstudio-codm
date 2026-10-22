@@ -41,6 +41,9 @@ namespace AssetStudio.Codm.Wwise
             "loop", "stop", "start", "end", "burst", "single", "auto", "semi", "full",
             "swing", "stab", "attack", "attack_1", "attack_2", "attack_3", "combo", "throw", "pin", "pin_out", "bounce", "detonate", "explode", "explosion", "open", "close",
             "overheat", "cooldown", "energy", "charge_up", "charge_loop", "release", "spin", "spin_up", "spin_down", "beam", "laser", "rail",
+            "firstattack", "first_attack", "secondattack", "second_attack", "thirdattack", "third_attack", "attack_a", "attack_b", "attack_c",
+            "putdown", "put_down", "inspection_1", "inspection_2", "inspection1", "inspection2", "clipin", "clipout", "clip_in_1", "clip_out_1",
+            "boltback", "bolt_back", "boltbackandrelease", "bolt_back_and_release", "firing", "fs", "footstep", "footsteps", "step",
         };
         public static readonly string[] Suffixes =
         {

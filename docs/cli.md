@@ -19,7 +19,8 @@ walking up from the exe directory, so the copy at the repository root is used). 
 | `codm deps <pak...>` | external bundles a pak references and which paks provide them |
 | `codm wwnames [--rebuild]` | recover Wwise event names for every weapon bank and record which weapon each bank belongs to |
 | `codm components [weapon] [--rebuild]` | index the attachment bundles by their asset paths and link them to weapons; with a weapon, list its attachments and the paths that matched |
-| `codm mbscan <weapon\|pak> [--deps]` | scan MonoBehaviour blobs for object references and Wwise ids (research aid) |
+| `codm events <weapon> [--all] [--no-deps]` | animation events (notetracks) of the weapon's clips with any Wwise ids they carry |
+| `codm mbscan <weapon\|pak> [--deps] [--hex]` | scan MonoBehaviour blobs for object references and Wwise ids (research aid) |
 | `codm classes [--unknown]` | sound class of every weapon family (map, seed, kind or unknown) |
 | `codm class <weapon> [<class>\|-]` | show or set the family's sound class in `weapon-classes.json` |
 | `codm characters [filter]` | character skins under `cod_models/avatar` (pvebot and vfw sub folders grouped) |
@@ -72,6 +73,8 @@ sounds (89):
   manifest.json          paks loaded, models, textures, banks, warnings
   models/<prefab>/       <prefab>.cast + anims/*.cast   (one per Animator; "<name> (module)" when two bundles ship the same prefab)
   textures/*.png
+  models/<prefab>/anims/notetracks.txt   animation events per clip: time, function, Wwise ids, guessed bank events
   sounds/<bank>/<event>/*.wem   (+ .wav when vgmstream is configured; events.txt maps events to wems)
+  sounds/_from_animation_events/<bank>/<event>/   wems of Wwise events the clips reference by id
   fx/<effect pak>/       textures/ + objects.txt        (with --fx; textures the effect's materials reference)
 ```

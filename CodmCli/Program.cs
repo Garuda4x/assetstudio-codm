@@ -54,6 +54,7 @@ namespace CodmCli
                     case "cabindex": return CmdCabIndex(opts);
                     case "anims": return CmdAnims(opts);
                     case "mbscan": return CmdMbScan(opts);
+                    case "events": return CmdEvents(opts);
                     case "wwnames": return CmdWwNames(opts);
                     case "characters": return CmdCharacters(opts);
                     case "character": return CmdCharacter(opts);
@@ -97,7 +98,8 @@ namespace CodmCli
             Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--class-banks] [--bank-variants] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
             Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
             Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
-            Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids");
+            Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids (--hex dumps small blobs)");
+            Console.WriteLine("  events <weapon> [--all]        animation events (notetracks) of the weapon's clips, cross-checked against Wwise ids");
             Console.WriteLine("  wwnames [--rebuild]            guess Wwise event/switch names (FNV) for all weapon banks; links banks to weapons by name");
             Console.WriteLine("  components [--rebuild]         index attachment bundles by their container paths and link them to weapons");
             Console.WriteLine("  deps <pak...>                  load bundle(s) and show which other paks they reference");
@@ -444,6 +446,73 @@ namespace CodmCli
             return 0;
         }
 
+        private static int CmdEvents(Options o)
+        {
+            if (o.Positional.Count == 0) { Console.Error.WriteLine("events <weapon> [--all]"); return 2; }
+            EnsureCatalog();
+            var w = ResolveWeapon(o.Positional[0]);
+            if (w == null) return 1;
+            var cabs = EnsureCabIndex();
+            var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => cabs);
+            var paks = svc.SelectPaks(w, new WeaponExportOptions());
+            var hirc = wwiseIndex.HircObjects(Console.Error.WriteLine);
+            var names = wwiseIndex.Names ?? WwiseNames.Load(cfg);
+            var am = new AssetsManager();
+            try
+            {
+                am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
+                if (!o.Has("no-deps"))
+                    DependencyResolver.Resolve(am, cabs, cfg, Console.Error.WriteLine);
+                var own = new HashSet<string>(paks.Select(p => p.FullPath), StringComparer.OrdinalIgnoreCase);
+                var clips = new List<AnimationClip>();
+                foreach (var file in am.assetsFileList)
+                {
+                    var isOwn = own.Contains(file.originalPath ?? file.fullName ?? "");
+                    foreach (var obj in file.Objects)
+                    {
+                        if (obj is Animator animator && isOwn)
+                            clips.AddRange(CodmExportService.ClipsForAnimator(animator, file));
+                        else if (obj is AnimationClip clip && (isOwn || o.Has("all")))
+                            clips.Add(clip);
+                    }
+                }
+                clips = clips.Distinct().OrderBy(c => c.m_Name).ToList();
+                var withEvents = 0; var total = 0;
+                var fnCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var clip in clips)
+                {
+                    if (clip.m_Events == null || clip.m_Events.Length == 0) continue;
+                    withEvents++;
+                    Console.WriteLine($"{clip.m_Name}  ({clip.m_Events.Length} event(s), {clip.m_MuscleClip?.m_StopTime ?? 0:F2}s)");
+                    foreach (var ev in clip.m_Events.OrderBy(e => e.time))
+                    {
+                        total++;
+                        fnCounts[ev.functionName ?? ""] = fnCounts.TryGetValue(ev.functionName ?? "", out var n) ? n + 1 : 1;
+                        var extra = new List<string>();
+                        if (!string.IsNullOrEmpty(ev.data))
+                        {
+                            var h = WwiseNames.Fnv1(ev.data);
+                            if (hirc.TryGetValue(h, out var r)) extra.Add($"fnv(data)=Wwise {HircTypeName(r.Type)} in {r.Bank}");
+                            foreach (var id in AnimationSoundMap.IdsInData(ev.data))
+                                if (hirc.TryGetValue(id, out var r2)) extra.Add($"id {id}=Wwise {HircTypeName(r2.Type)} {names.GetOrId(id)} in {r2.Bank}");
+                        }
+                        if (ev.intParameter != 0 && hirc.TryGetValue((uint)ev.intParameter, out var r3)) extra.Add($"int=Wwise {HircTypeName(r3.Type)} {names.GetOrId((uint)ev.intParameter)} in {r3.Bank}");
+                        if (ev.floatParameter != 0 && Math.Abs(ev.floatParameter - Math.Round(ev.floatParameter)) < 1e-6 && ev.floatParameter > 1000 && hirc.TryGetValue((uint)ev.floatParameter, out var r4)) extra.Add($"float=Wwise {HircTypeName(r4.Type)} in {r4.Bank}");
+                        var objRef = "";
+                        if (ev.objectReferenceParameter != null && ev.objectReferenceParameter.m_PathID != 0)
+                            objRef = ev.objectReferenceParameter.TryGet(out var refObj) ? $" obj={refObj.type}:{(refObj as NamedObject)?.m_Name ?? (refObj as GameObject)?.m_Name}" : $" obj=unresolved(file {ev.objectReferenceParameter.m_FileID}, path {ev.objectReferenceParameter.m_PathID})";
+                        Console.WriteLine($"    {ev.time,7:F3}s  {ev.functionName,-32} data='{ev.data}' int={ev.intParameter} float={ev.floatParameter:G6}{objRef}{(extra.Count > 0 ? "   <- " + string.Join("; ", extra) : "")}");
+                    }
+                }
+                Console.WriteLine($"{clips.Count} clip(s), {withEvents} with events, {total} event(s). Function names: {string.Join(", ", fnCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key}x{kv.Value}"))}");
+            }
+            finally
+            {
+                am.Clear();
+            }
+            return 0;
+        }
+
         private static int CmdMbScan(Options o)
         {
             if (o.Positional.Count == 0) { Console.Error.WriteLine("mbscan <weapon|pak> [--deps]"); return 2; }
@@ -485,6 +554,15 @@ namespace CodmCli
                         var bodyStart = reader.Position;
                         var body = reader.ReadBytes((int)Math.Min(reader.Remaining, 1 << 20));
                         Console.WriteLine($"MonoBehaviour {className} name='{mb.m_Name}' go='{goName}' pathID={objInfo.m_PathID} body={body.Length} B  ({PakName.Parse(Path.GetFileName(file.originalPath ?? "")).Decoded})");
+                        if (o.Has("hex") && body.Length <= 256)
+                        {
+                            for (var off = 0; off < body.Length; off += 16)
+                            {
+                                var chunk = body.Skip(off).Take(16).ToArray();
+                                var u32s = Enumerable.Range(0, chunk.Length / 4).Select(k => BitConverter.ToUInt32(chunk, k * 4).ToString()).ToArray();
+                                Console.WriteLine($"    {off:X4}: {BitConverter.ToString(chunk).Replace("-", " "),-48}  u32: {string.Join(" ", u32s)}");
+                            }
+                        }
 
                         // PPtr pattern: int32 fileID (0..externals) + int64 pathID (non-zero), 4-byte aligned
                         var pptrHits = 0;

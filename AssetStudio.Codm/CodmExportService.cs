@@ -50,6 +50,8 @@ namespace AssetStudio.Codm
         public List<string> Banks { get; } = new List<string>();
         public List<string> Effects { get; } = new List<string>();
         public List<string> Warnings { get; } = new List<string>();
+        /// <summary>Wwise event ids found in the animation clips' event data.</summary>
+        public List<uint> ClipWwiseEvents { get; } = new List<uint>();
         public int WemsExtracted { get; set; }
         public int WemsConverted { get; set; }
     }
@@ -92,10 +94,15 @@ namespace AssetStudio.Codm
             var report = new WeaponExportReport { Weapon = w.Folder, OutputDir = dir };
 
             var paks = SelectPaks(w, o);
+            currentBanks = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).Concat(w.SharedBanks).Distinct().ToList();
             ExportBundleSet(paks, dir, o, report, log);
+            currentBanks = null;
 
             if (o.Sounds && wwise != null)
+            {
                 ExportSounds(w, Path.Combine(dir, "sounds"), o, report, log);
+                ExportClipEventSounds(report, Path.Combine(dir, "sounds", "_from_animation_events"), o, log);
+            }
 
             if (o.Effects && w.Effects.Count > 0)
                 ExportEffects(w, Path.Combine(dir, "fx"), report, log);
@@ -164,6 +171,9 @@ namespace AssetStudio.Codm
         /// as Cast. Only objects from the weapon's own paks are exported (dependency paks just resolve
         /// references). A prefab that exists in several bundles is exported once unless requested.
         /// </summary>
+        /// <summary>Banks of the weapon being exported, for the notetrack sheet (set by ExportWeapon).</summary>
+        private List<Wwise.WwiseBankInfo> currentBanks;
+
         public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null, bool allPrefabCopies = false)
         {
             var exportedRoots = new HashSet<GameObject>();
@@ -224,6 +234,16 @@ namespace AssetStudio.Codm
                         var animDir = Path.Combine(modelDir, "anims");
                         var written = Directory.Exists(animDir) ? Directory.GetFiles(animDir, "*.cast").Length : 0;
                         log($"[Export] model {name}: {conv.MeshList.Count} mesh(es), {clips.Length} clip(s) found, {written} written");
+                        if (clips.Length > 0 && Directory.Exists(animDir))
+                        {
+                            var sheet = AnimationSoundMap.Collect(clips, wwise, currentBanks);
+                            if (sheet.Count > 0)
+                            {
+                                AnimationSoundMap.WriteSheet(Path.Combine(animDir, "notetracks.txt"), sheet);
+                                foreach (var id in sheet.SelectMany(e => e.WwiseEvents)) report.ClipWwiseEvents.Add(id);
+                                log($"[Export] {name}: {sheet.Count} animation event(s) -> anims/notetracks.txt");
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -416,7 +436,7 @@ namespace AssetStudio.Codm
         public void ExportSounds(WeaponEntry w, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log)
         {
             // the weapon's own banks and those of its base chain (a skin without custom sounds uses the base's)
-            var own = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).ToList();
+            var own = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).Where(b => b.HasHirc).ToList(); // 32-byte header-only banks carry nothing
             if (!o.BankVariants)
                 own = own.Where(b => !b.IsNumeric || System.Text.RegularExpressions.Regex.IsMatch(b.Name, @"^\d+(p\d)?$")).ToList();
             var banks = own.Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -570,6 +590,34 @@ namespace AssetStudio.Codm
             var bundlePath = file.originalPath ?? file.fullName;
             var entry = index?.Entries.FirstOrDefault(e => string.Equals(e.FullPath, bundlePath, StringComparison.OrdinalIgnoreCase));
             return entry?.Source ?? "streaming";
+        }
+
+        /// <summary>
+        /// Wems of the Wwise events the animation clips name directly (PlayEventSound data), wherever
+        /// their bank lives (footsteps, generic handling): one folder per event.
+        /// </summary>
+        private void ExportClipEventSounds(WeaponExportReport report, string dir, WeaponExportOptions o, Action<string> log)
+        {
+            var ids = report.ClipWwiseEvents.Distinct().ToList();
+            if (ids.Count == 0) return;
+            var hirc = wwise.HircObjects();
+            var byBank = new Dictionary<string, List<uint>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var id in ids)
+            {
+                if (!hirc.TryGetValue(id, out var r) || r.Type != 4) continue;
+                if (!byBank.TryGetValue(r.Bank, out var list)) byBank[r.Bank] = list = new List<uint>();
+                list.Add(id);
+            }
+            foreach (var kv in byBank)
+            {
+                var info = wwise.PreferredCopy(kv.Key);
+                if (info == null) continue;
+                var wanted = new HashSet<uint>(kv.Value);
+                var r = WemTools.ExportBank(wwise, info, Path.Combine(dir, info.Name), cfg.VgmstreamPath, o.ConvertWem, log, true, id => wanted.Contains(id));
+                report.WemsExtracted += r.Extracted;
+                report.WemsConverted += r.Converted;
+            }
+            log($"[Export] {ids.Count} Wwise event(s) referenced by animation events exported under sounds/_from_animation_events");
         }
 
         /// <summary>Short tag for the bundle a serialized file came from: "streaming", "common", "cn13.0"...</summary>

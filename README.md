@@ -17,6 +17,7 @@ or updated from this machine; the tooling only reads files.**
 | Textures (DXT1/DXT5/BC7, streamed `.resS`) | works, png by default |
 | Pak navigation | obfuscated names are decoded (letters and digits); weapons grouped as base + skins |
 | Bundle dependencies | shared animation packs, controllers and avatars are loaded automatically (CAB index) |
+| Animation events | `PlayFirstAttackSound`, `PlayRaiseSound`... exported as Cast notetracks plus a per-prefab `notetracks.txt` sheet |
 | Sounds (Wwise) | weapon banks found by their event names (`play_wpn_locus_fire_1p`), wems exported per event, class bank from the weapon class map, wav via vgmstream |
 | Attachments | magazines, barrels, stocks, grips, sights linked through the asset paths inside the attachment bundles |
 | Characters | every skin under `cod_models/avatar` (body, head, hair, first-person arms as separate prefabs), same Cast + textures export |
