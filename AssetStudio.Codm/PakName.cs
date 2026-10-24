@@ -59,6 +59,13 @@ namespace AssetStudio.Codm
                     pn.ModuleVersion = string.Join(".", parts, 1, i - 1);
                     body = string.Join("!", parts, i, parts.Length - i);
                 }
+                else if (i == 2 && parts.Length >= 4 && parts[2].Length > 0 && parts[2].All(char.IsLetter))
+                {
+                    // 1.9.57 container names: module!ver!tag!path, the tag being a ciphered word ("forcedownload")
+                    pn.Module = CodmNameCipher.Decode(parts[0]);
+                    pn.ModuleVersion = parts[1] + "." + CodmNameCipher.Decode(parts[2]);
+                    body = string.Join("!", parts, 3, parts.Length - 3);
+                }
             }
 
             var at = body.LastIndexOf('@');

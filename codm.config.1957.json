@@ -1,6 +1,6 @@
 {
   "GameRoot": "Q:\\CODMGameApps\\CN\\emulator\\Extract\\CODM",
-  "PakFolders": [],
+  "PakFolders": [ "./unpack-1957/puffer", "./unpack-1957/extract", "./unpack-1957/streaming" ],
   "SoundBankFolders": [
     "CODM_Data\\StreamingAssets\\Audio\\GeneratedSoundBanks\\Windows",
     "PersistentData\\PufferQts\\Audio\\GeneratedSoundBanks\\Windows",
@@ -14,5 +14,6 @@
   "ScaleFactor": 1.0,
   "SourcePriority": [ "puffer", "extract", "streaming" ],
   "Diagnostics": false,
-  "CacheDir": "cache-1957"
+  "CacheDir": "cache-1957",
+  "UnpackRoot": "unpack-1957"
 }

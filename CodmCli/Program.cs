@@ -6,6 +6,7 @@ using System.Text;
 using AssetStudio;
 using AssetStudio.Codm;
 using AssetStudio.Codm.Wwise;
+using AssetStudio.Codm.Vfs;
 
 namespace CodmCli
 {
@@ -22,6 +23,7 @@ namespace CodmCli
         private static CabIndex cabIndex;
         private static ContainerIndex containerIndex;
         private static CharacterCatalog characters;
+        private static CodmVfs vfs;
 
         private static int Main(string[] args)
         {
@@ -72,6 +74,9 @@ namespace CodmCli
                     case "scan": return CmdScan(opts);
                     case "mono": return CmdMono(opts);
                     case "typetree": return CmdTypeTree(opts);
+                    case "vfs": return CmdVfs(opts);
+                    case "vfs-index": return CmdVfsIndex(opts);
+                    case "unpack": return CmdUnpack(opts);
                     default:
                         Console.Error.WriteLine($"Unknown command '{command}'.");
                         PrintUsage();
@@ -117,8 +122,101 @@ namespace CodmCli
             Console.WriteLine("  scan <pak|dir> [-v] [--csv f]  bundle metadata scan (types, names, container paths)");
             Console.WriteLine("  mono <pak>                     list MonoScript / MonoBehaviour and embedded strings");
             Console.WriteLine("  typetree <pak>                 report whether the bundle carries type trees");
+            Console.WriteLine("  vfs                            1.9.57 containers found for the config: packs, entries, chunks, base offset cache");
+            Console.WriteLine("  vfs-index [--rebuild]          walk the base pack once and cache where each entry starts (minutes)");
+            Console.WriteLine("  unpack <text...> [--out d]     extract container entries whose decoded name contains the text as loose paks (format 18 rewritten to stock) [--list] [--raw] [--chunks] [--max n]");
             Console.WriteLine();
             Console.WriteLine("Global (before or after the command): --config <file>  --diag");
+        }
+
+        // ---------------------------------------------------------------- 1.9.57 containers
+
+        private static CodmVfs EnsureVfs()
+        {
+            if (vfs != null) return vfs;
+            vfs = CodmVfs.Open(cfg, Console.Error.WriteLine);
+            return vfs;
+        }
+
+        private static int CmdVfs(Options o)
+        {
+            var v = EnsureVfs();
+            foreach (var p in v.QtsPacks)
+                Console.WriteLine($"{p.Label,-10} {p.Entries.Count,8} entries  {p.Entries.Count(e => e.IsChunk),8} chunks  {p.PartsOnDisk}/{p.PartCount} parts  {p.Directory}");
+            if (v.BasePack != null)
+            {
+                var b = v.BasePack;
+                var cache = v.BaseOffsetCachePath(cfg);
+                var cached = b.HasOffsets || (File.Exists(cache) && b.LoadOffsets(cache));
+                Console.WriteLine($"{b.Label,-10} {b.Entries.Count,8} entries  {b.Entries.Count(e => e.IsChunk),8} chunks  {b.PartCount} parts  {b.Directory}");
+                Console.WriteLine($"           offset cache: {(cached ? $"{b.EntriesWithOffsets}/{b.Entries.Count} entries ({cache})" : "not built (codm vfs-index)")}");
+            }
+            if (v.QtsPacks.Count == 0 && v.BasePack == null)
+                Console.WriteLine("no containers found (is GameRoot a 1.9.57 install?)");
+            Console.WriteLine($"total: {v.Entries.Count} entries, {v.ChunkCount} distinct chunks, {v.Entries.Count(e => e.IsBundle)} bundles");
+            return 0;
+        }
+
+        private static int CmdVfsIndex(Options o)
+        {
+            var v = EnsureVfs();
+            if (v.BasePack == null)
+            {
+                Console.Error.WriteLine("no base pack found");
+                return 1;
+            }
+            v.EnsureBaseOffsets(cfg, Console.Error.WriteLine, o.Has("rebuild"));
+            Console.WriteLine($"{v.BasePack.EntriesWithOffsets}/{v.BasePack.Entries.Count} entries located; cache {v.BaseOffsetCachePath(cfg)}");
+            return 0;
+        }
+
+        private static int CmdUnpack(Options o)
+        {
+            if (o.Positional.Count == 0)
+            {
+                Console.Error.WriteLine("usage: codm unpack <text...> [--out dir] [--list] [--raw] [--chunks] [--max n]");
+                return 1;
+            }
+            var v = EnsureVfs();
+            var includeChunks = o.Has("chunks");
+            var matches = o.Positional.SelectMany(q => v.Find(q, includeChunks)).Distinct().ToList();
+            var max = o.GetInt("max", int.MaxValue);
+            if (matches.Count > max) matches = matches.Take(max).ToList();
+            if (o.Has("list") || matches.Count == 0)
+            {
+                foreach (var e in matches)
+                    Console.WriteLine($"{e.SourceLabel,-9} {e.Size,12:N0}  {e.Decoded}");
+                Console.WriteLine($"{matches.Count} entries");
+                return 0;
+            }
+            if (matches.Any(e => e.Source == VfsSource.Streaming))
+                v.EnsureBaseOffsets(cfg, Console.Error.WriteLine);
+            var outRoot = o.Get("out") ?? cfg.UnpackRootPath;
+            var normalize = !o.Has("raw");
+            var written = 0;
+            long bytes = 0;
+            foreach (var e in matches)
+            {
+                var dir = Path.Combine(outRoot, e.IsChunk ? "chunks" : e.SourceLabel);
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, e.FileName);
+                try
+                {
+                    var stats = new BundleNormalizer.Stats();
+                    var data = e.IsBundle ? v.ReadBundle(e, normalize, stats, Console.Error.WriteLine) : v.ReadRaw(e);
+                    File.WriteAllBytes(path, data);
+                    written++;
+                    bytes += data.Length;
+                    var note = stats.RewrittenFiles > 0 ? $" (format 18 -> 17: {stats.ExternalObjects}/{stats.Objects} objects from {stats.Chunks.Count} chunks)" : "";
+                    Console.WriteLine($"{e.SourceLabel,-9} {data.Length,12:N0}  {e.Decoded}{note}");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"FAILED {e.Decoded}: {ex.Message}");
+                }
+            }
+            Console.WriteLine($"{written}/{matches.Count} entries written to {outRoot} ({bytes:N0} bytes)");
+            return 0;
         }
 
         // ---------------------------------------------------------------- helpers

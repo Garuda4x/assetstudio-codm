@@ -67,13 +67,30 @@ namespace AssetStudio.Codm
         [JsonProperty(Order = 10)]
         public string CacheDir { get; set; } = "cache";
 
+        /// <summary>1.9.57 container folders (base pack, PufferQts, ExtractQts\n). Empty: detected under <see cref="GameRoot"/>.</summary>
+        [JsonProperty(Order = 11)]
+        public List<string> VfsFolders { get; set; } = new List<string>();
+
+        /// <summary>Where "codm unpack" writes loose paks (relative to the config file).</summary>
+        [JsonProperty(Order = 12)]
+        public string UnpackRoot { get; set; } = "unpack";
+
         [JsonIgnore]
         public string ConfigPath { get; private set; }
 
         [JsonIgnore]
         public string ConfigDir => ConfigPath != null ? Path.GetDirectoryName(ConfigPath) : AppDomain.CurrentDomain.BaseDirectory;
 
-        public string ResolveGamePath(string rel) => Path.IsPathRooted(rel) ? rel : Path.Combine(GameRoot, rel);
+        /// <summary>Game-relative path; "./x" or "../x" are taken relative to the config file instead.</summary>
+        public string ResolveGamePath(string rel)
+        {
+            if (Path.IsPathRooted(rel)) return rel;
+            if (rel.StartsWith("./") || rel.StartsWith(".\\") || rel.StartsWith("../") || rel.StartsWith("..\\"))
+                return ResolveLocalPath(rel);
+            return Path.Combine(GameRoot, rel);
+        }
+        [JsonIgnore]
+        public string UnpackRootPath => ResolveLocalPath(string.IsNullOrEmpty(UnpackRoot) ? "unpack" : UnpackRoot);
         public string ResolveLocalPath(string rel) => Path.IsPathRooted(rel) ? rel : Path.GetFullPath(Path.Combine(ConfigDir, rel));
         /// <summary>Full path of a cache file inside <see cref="CacheDir"/>.</summary>
         public string CachePath(string fileName) => ResolveLocalPath(Path.Combine(string.IsNullOrEmpty(CacheDir) ? "cache" : CacheDir, fileName));
