@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace AssetStudio.Codm.Vfs
@@ -21,6 +22,8 @@ namespace AssetStudio.Codm.Vfs
             public int ExternalObjects;
             public long ExternalBytes;
             public HashSet<string> Chunks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            /// <summary>Chunks referenced by streamed data (texture pixels) and embedded as resource nodes.</summary>
+            public HashSet<string> StreamChunks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
         private sealed class Node
@@ -109,9 +112,51 @@ namespace AssetStudio.Codm.Vfs
                 }
                 n.Data = slice;
             }
-            if (rewritten == 0)
+            // Streamed data (Texture2D.m_StreamData and the like) may point at "qtc:/stream/<md5>.cpak"
+            // instead of the bundle's .resS. The reader resolves such paths by file name among the
+            // bundle's resource nodes, so each referenced chunk becomes a node named "<md5>.cpak".
+            var have = new HashSet<string>(nodes.Select(n => n.Path), StringComparer.OrdinalIgnoreCase);
+            var extra = new List<Node>();
+            foreach (var n in nodes)
+            {
+                if (!IsSerializedFile(n.Data)) continue;
+                foreach (var md5 in FindStreamRefs(n.Data))
+                {
+                    var name = md5 + ".cpak";
+                    if (!have.Add(name)) continue;
+                    var chunk = resolveChunk(md5) ?? throw new FileNotFoundException($"stream chunk qtc:/stream/{md5}.cpak not found in any pack");
+                    extra.Add(new Node { Path = name, Flags = 0, Data = chunk });
+                    stats.StreamChunks.Add(md5);
+                }
+            }
+            nodes.AddRange(extra);
+            if (rewritten == 0 && extra.Count == 0)
                 return null;
             return EmitUnityFS(unityVersion, unityRevision, nodes);
+        }
+
+        private static readonly byte[] QtcPrefix = Encoding.ASCII.GetBytes("qtc:/");
+
+        /// <summary>md5 names of the "qtc:/.../&lt;md5&gt;.cpak" references inside the data section of a serialized file.</summary>
+        private static IEnumerable<string> FindStreamRefs(byte[] sf)
+        {
+            var r = new BigEndianReader(sf);
+            r.Position = 12;
+            var dataOffset = (int)r.ReadUInt32();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = Math.Max(0, dataOffset); i + QtcPrefix.Length < sf.Length; i++)
+            {
+                if (sf[i] != (byte)'q' || sf[i + 1] != 't' || sf[i + 2] != 'c' || sf[i + 3] != ':' || sf[i + 4] != '/')
+                    continue;
+                var e = i;
+                while (e < sf.Length && sf[e] >= 0x21 && sf[e] < 0x7f) e++;
+                var text = Encoding.ASCII.GetString(sf, i, e - i);
+                i = e;
+                if (!text.EndsWith(".cpak", StringComparison.OrdinalIgnoreCase)) continue;
+                var md5 = Path.GetFileNameWithoutExtension(text);
+                if (md5.Length == 32 && seen.Add(md5))
+                    yield return md5;
+            }
         }
 
         private static byte[] Decompress(byte[] src, int off, int compressed, int uncompressed, uint type)

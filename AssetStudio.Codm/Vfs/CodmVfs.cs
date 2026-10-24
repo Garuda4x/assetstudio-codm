@@ -42,6 +42,9 @@ namespace AssetStudio.Codm.Vfs
         private readonly Dictionary<string, byte[]> chunkCache = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         public bool HasBaseOffsets => BasePack != null && BasePack.HasOffsets;
+        /// <summary>The config this set was opened with (cache paths for the base pack offsets).</summary>
+        public CodmConfig Config { get; private set; }
+        private Action<string> log;
 
         /// <summary>Default container folders under the game root.</summary>
         public static IEnumerable<string> DefaultFolders(CodmConfig cfg)
@@ -61,7 +64,7 @@ namespace AssetStudio.Codm.Vfs
 
         public static CodmVfs Open(CodmConfig cfg, Action<string> log = null)
         {
-            var vfs = new CodmVfs();
+            var vfs = new CodmVfs { Config = cfg, log = log };
             var folders = cfg.VfsFolders != null && cfg.VfsFolders.Count > 0 ? cfg.VfsFolders.Select(cfg.ResolveGamePath) : DefaultFolders(cfg);
             foreach (var folder in folders)
             {
@@ -146,10 +149,10 @@ namespace AssetStudio.Codm.Vfs
         {
             if (BasePack == null) return;
             var cache = cfg.CachePath($"qtsf-{BasePack.Prefix}-offsets.bin");
-            if (!rebuild && BasePack.HasOffsets) return;
-            if (!rebuild && BasePack.LoadOffsets(cache) && BasePack.HasOffsets)
+            if (!rebuild && BasePack.EntriesWithOffsets > 0) return;
+            if (!rebuild && BasePack.LoadOffsets(cache))
             {
-                progress?.Invoke($"{BasePack.Label}: offsets loaded from {cache}");
+                progress?.Invoke($"{BasePack.Label}: offsets loaded from {cache} ({BasePack.EntriesWithOffsets}/{BasePack.Entries.Count} entries)");
                 return;
             }
             progress?.Invoke($"{BasePack.Label}: building the entry offset cache (one walk over {BasePack.PartCount} parts)...");
@@ -172,7 +175,12 @@ namespace AssetStudio.Codm.Vfs
         public byte[] ReadRaw(VfsEntry e)
         {
             if (e.Qts != null) return e.Qts.Pack.Read(e.Qts);
-            if (e.Qtsf != null) return BasePack.Read(e.Qtsf);
+            if (e.Qtsf != null)
+            {
+                if (e.Qtsf.Offset < 0 && Config != null)
+                    EnsureBaseOffsets(Config, log);
+                return BasePack.Read(e.Qtsf);
+            }
             throw new InvalidOperationException("entry without a pack");
         }
 
@@ -186,6 +194,8 @@ namespace AssetStudio.Codm.Vfs
             if (!chunks.TryGetValue(md5, out var e))
                 return null;
             var data = ReadRaw(e);
+            if (data.Length != e.Size)
+                throw new InvalidDataException($"chunk {md5} from {e.SourceLabel}: read {data.Length} bytes, index says {e.Size}");
             lock (chunkCache)
             {
                 if (chunkCache.Count > 64) chunkCache.Clear();

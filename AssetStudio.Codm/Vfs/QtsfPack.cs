@@ -29,7 +29,7 @@ namespace AssetStudio.Codm.Vfs
     /// <summary>
     /// Reader for the QTSF base pack of CoD Mobile 1.9.57 (StreamingAssets\AssetBundle\base): an index
     /// (AssetBundle_base.pak), a pack-order file and 2 GB data parts holding one node per block (node
-    /// header, block header, zstd frame; blocks are 16 KB raw, occasionally shorter). The index has no
+    /// header with a link field, block header, zstd frame; blocks are 16 KB raw, occasionally shorter). The index has no
     /// offsets, so a one-time walk over the parts assigns each entry its first node; entries follow the
     /// pack order inside a part and their index size says where they end.
     /// </summary>
@@ -231,9 +231,11 @@ namespace AssetStudio.Codm.Vfs
                                 if (acc == 0) start = pos;
                                 continue;
                             }
+                            if (acc + h.RawSize > e.Size)
+                                break; // stored short: leave this node to the next entry
                             acc += h.RawSize;
                             pos += h.NodeSize;
-                            if (acc >= e.Size) // blocks shorter than 16 KB can occur mid-entry; the index size is the stop condition
+                            if (acc == e.Size) // blocks shorter than 16 KB can occur mid-entry; the index size is the stop condition
                                 break;
                         }
                         e.Offset = start;
@@ -298,13 +300,13 @@ namespace AssetStudio.Codm.Vfs
                 if (!Ensure(pos, NodeHeaderSize)) return false;
                 var o = (int)(pos - bufStart);
                 var self = BitConverter.ToUInt32(buf, o);
-                var neg = BitConverter.ToUInt32(buf, o + 4);
+                // o + 4: link field, 0xFFFFFFFF or the offset of a related node (chains of identical blocks); not a validity criterion
                 var nodeSize = BitConverter.ToInt32(buf, o + 8);
                 var hl = BitConverter.ToInt32(buf, o + 20);
                 var cs = BitConverter.ToInt32(buf, o + 24);
                 var m = BitConverter.ToInt32(buf, o + 28);
                 var us = BitConverter.ToInt32(buf, o + 32);
-                if (self != (uint)pos || neg != 0xFFFFFFFF || hl != 16 || (m != 0 && m != 2) || us < 0 || us > BlockSize || cs < 0 || cs + NodeHeaderSize > nodeSize + 16 || nodeSize < NodeHeaderSize)
+                if (self != (uint)pos || hl != 16 || (m != 0 && m != 2) || us < 0 || us > BlockSize || cs < 0 || cs + NodeHeaderSize > nodeSize + 16 || nodeSize < NodeHeaderSize)
                     return false;
                 h = new NodeHeader { NodeSize = nodeSize, CompressedSize = cs, Method = m, RawSize = us };
                 return true;
@@ -380,7 +382,7 @@ namespace AssetStudio.Codm.Vfs
                         pos += h.NodeSize;
                     }
                     if (acc != dst.Length)
-                        Array.Resize(ref dst, acc);
+                        throw new InvalidDataException($"{Label}: {e.Name}: read {acc} of {dst.Length} bytes (node chain ended early at {pos})");
                     return dst;
                 }
             }

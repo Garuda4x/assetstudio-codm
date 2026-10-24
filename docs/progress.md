@@ -210,17 +210,21 @@ bundle), `Lz4Block`, `ZstdFrame` (ZstdSharp.Port from NuGet). CLI: `codm vfs`, `
 reads the `unpack-1957` folders. `PakName` understands the `module!ver!forcedownload!path` prefix.
 Reference: [codm-containers.md](codm-containers.md).
 
-**Verified.** 32 Locus bundles (railgun 2537 and base 104) and 27 Vector / Alias bundles unpacked from
-the download pack with their external payloads inlined (up to 193 of 401 objects from 8 chunks in one
-bundle); `codm scan` reads the results (clips, textures, meshes, Avatar, SkinnedMeshRenderer) and
-`codm weapons` / `codm weapon 2537` build the catalog from them with the base chain intact. The base
-pack walk located all 148 592 entries in about 7 minutes.
+**Verified.** `codm --config codm.config.1957.json export 2537` on the unpacked bundles (Locus railgun
+and base, shared animation packs and controllers from the base and patch packs, 102 entries, 750 MB)
+gives the same result as on 1.9.55: 6 models, 36 + 34 first-person clips with notetracks, 101 textures
+(none failing), 4 dependency bundles, banks 105 and 105p3 with 422 wems converted to wav. The base
+pack walk located all 148 592 entries with no size mismatch in about 7 minutes.
 
 **Found.** Entries in a Qts pack are found from the block table's `Q` (global logical page) through the
-part's page map; the record timestamp is not the part. Blocks shorter than 16 KB occur in the middle of
-base pack entries (114 of 148 592), so an entry ends at its index size, not at the first short block.
-Module bundles are stored whole; their chunks live in the same pack. The base index records whose id
-starts with the byte `_` must not be mistaken for the `QTSF_PACKAGE` marker.
+part's page map; the record timestamp is not the part. Base pack nodes carry a link field that is not
+always `-1` (chains of identical blocks), and blocks shorter than 16 KB occur in the middle of an entry,
+so an entry ends exactly at its index size. Module bundles are stored whole; their chunks live in the
+same pack. Most texture pixel data now sits in `qtc:/stream/<md5>.cpak` chunks instead of the bundle's
+`.resS`; the normalizer embeds those chunks as resource nodes and the reader finds them by file name.
+The base index records whose id starts with the byte `_` must not be mistaken for the `QTSF_PACKAGE`
+marker. Wwise name recovery needs the weapon tokens from the container names, since the unpacked
+folder only holds a few weapons.
 
 **Observed.** While this was built the game itself (`CODM`, started 02:14) and `CODMLauncher` were
 running and rewrote all 96 download-pack parts at 04:46; they also hold the parts open, so the readers
@@ -235,4 +239,4 @@ open files with read-write sharing. Work on the live install should happen with 
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.
 - Optional: embedded textured mesh preview in the browser; standalone GUI.
-- 1.9.57: full weapon export from unpacked bundles (shared animation packs from the base pack), GUI front end for unpack, then a container-aware pak index so unpacking becomes optional; the 375-entry table in base parts; the `.cpak` chunk sizes vs. the 5 base entries stored one block short in the first walk (now accounted for).
+- 1.9.57: GUI front end for unpack (weapon browser over the containers), then a container-aware pak index so unpacking becomes optional; characters and effects through the same path; the 375-entry table in base parts; the game must be closed while reading the live install.

@@ -209,7 +209,9 @@ namespace CodmCli
                     File.WriteAllBytes(path, data);
                     written++;
                     bytes += data.Length;
-                    var note = stats.RewrittenFiles > 0 ? $" (format 18 -> 17: {stats.ExternalObjects}/{stats.Objects} objects from {stats.Chunks.Count} chunks)" : "";
+                    var note = stats.RewrittenFiles > 0 || stats.StreamChunks.Count > 0
+                        ? $" (format 18 -> 17: {stats.ExternalObjects}/{stats.Objects} objects from {stats.Chunks.Count} chunks, {stats.StreamChunks.Count} stream chunks embedded)"
+                        : "";
                     Console.WriteLine($"{e.SourceLabel,-9} {data.Length,12:N0}  {e.Decoded}{note}");
                 }
                 catch (Exception ex)
@@ -250,9 +252,13 @@ namespace CodmCli
         {
             var rx = new System.Text.RegularExpressions.Regex(@"^cod_models/weapons/(mainweapon|meleeweapon|throwweapon|assiweapon|specialweapon)/[a-z]+_(\d+)_([a-z0-9_]+?)(/.*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var e in index.Entries)
+            var paths = index.Entries.Select(e => e.Name.Path);
+            // a 1.9.57 install: the containers know every module bundle, the unpacked folder only a few
+            if (CodmVfs.DefaultFolders(cfg).Any(Directory.Exists) || (cfg.VfsFolders != null && cfg.VfsFolders.Count > 0))
+                paths = paths.Concat(EnsureVfs().Entries.Where(e => e.Name != null).Select(e => e.Name.Path));
+            foreach (var path in paths)
             {
-                var m = rx.Match(e.Name.Path);
+                var m = rx.Match(path);
                 if (!m.Success) continue;
                 set.Add(m.Groups[3].Value.ToLowerInvariant());
                 set.Add(WeaponCatalog.NormalizeName(m.Groups[3].Value));

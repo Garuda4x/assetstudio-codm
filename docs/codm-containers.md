@@ -58,10 +58,12 @@ entry id again. Names keep the old cipher (`LUJ_EUJMCF$...pak`) or are `<md5>.cp
 order. The index has no offsets.
 
 **Parts** `AssetBundle_base_<k>.pak` (2 000 000 000 bytes each): 4 KB header, a 375-entry u32 table at
-0x1000 (meaning unknown), nodes from 0x1a000. Node: `[u32 self offset][u32 -1][u32 node size][u64
+0x1000 (meaning unknown), nodes from 0x1a000. Node: `[u32 self offset][u32 link][u32 node size][u64
 hash]`, block header `[u32 16][u32 compressed size][u32 method (2 = zstd, 0 = stored)][u32 raw size]`,
 the zstd frame (single segment) plus 8 trailing bytes; nodes are 8-byte aligned and 4 KB index pages
-(sorted u32 lists) may sit between them. Blocks are 16 KB raw, occasionally shorter in the middle of an
+(sorted u32 lists) may sit between them. The link field is `0xFFFFFFFF` for most nodes and an offset for
+nodes of repeated content (runs of identical 16 KB blocks compress to 27 bytes and point at each
+other), so it is not a validity criterion. Blocks are 16 KB raw, occasionally shorter in the middle of an
 entry, so an entry ends where the accumulated raw size reaches its index size.
 
 **Offset cache**: `codm vfs-index` walks every part once (about 7 minutes at 100 MB/s), assigns each
@@ -85,11 +87,17 @@ the serialized file in **format 18**:
 Chunks of download-pack bundles live in the download pack, chunks of base-pack bundles in the base
 pack (checked on the Locus bundles and 30 random module bundles).
 
+Streamed data moved as well: most `Texture2D.m_StreamData` paths are `qtc:/stream/<md5>.cpak` (a
+chunk holding the pixel data) instead of `archive:/CAB-.../CAB-....resS`; a few textures still use the
+bundle's `.resS`.
+
 `BundleNormalizer` turns such a bundle into a stock one: it decompresses the UnityFS blocks, rewrites
 every format-18 file as format 17 (string list dropped, external payloads appended to the data section
-8-byte aligned, object table in the stock 20-byte layout, metadata size and data offset recomputed) and
-re-emits an uncompressed UnityFS with the same node names. `.resS` nodes pass through. The unchanged
-AssetStudio reader then loads the result; `SerializedFile` itself only learned to skip the string list.
+8-byte aligned, object table in the stock 20-byte layout, metadata size and data offset recomputed),
+embeds every chunk referenced from the data section (`qtc:/.../<md5>.cpak`) as a resource node named
+`<md5>.cpak` (the reader resolves stream paths by file name among the bundle's resource nodes) and
+re-emits an uncompressed UnityFS. `.resS` nodes pass through. The unchanged AssetStudio reader then
+loads the result; `SerializedFile` itself only learned to skip the string list.
 
 ## Command line
 
