@@ -379,6 +379,20 @@ follow over the clip (drift 0.00000; rail 0.001 as it is weighted across blades)
 returns with `Bone_DanJia`; renders with the camera on `Bone_RightHand` show it. Saved for the user as
 `dql_noirshadow_assembled.blend` next to their file (original untouched).
 
+## 2026-10-24, night: IW4 port pilot, gun xmodel
+
+The DL Q33 Black Noir is the pilot for porting CODM weapons to IW4x. The IW4-side tooling lives with the
+user's earlier CODM ports in `Q:\Modding\iw4x\iw4xTools\CODM\CODMConverter` (viewhands retarget
+pipeline, calibration: CODM rig at scale 143.037, Z +90 deg); new: `Weapon\codm_weapon_to_iw4_xmodel.py`
+and `Weapon\README.md`. From the assembled .blend it builds the gun skeleton on `j_gun` (= CODM
+`Bone_RightHand`, which hangs off `Bip01` like IW4 `tag_weapon` off `tag_torso`), keeps the 16 bones
+the clips move or the engine needs (`j_mag1`, `j_bolt`, `j_blade_*`, `tag_flash`, `tag_brass`) and
+collapses the static attach points, renames materials per colour map and writes XMODEL_EXPORT (36 550
+verts, 4 materials, 64 in long) plus a material converter config. Retarget plan: the gun FK 1:1 in world
+space (same rig, renamed and scaled), arms by the existing IK pipeline. BetterBlenderCOD fails on rigs with
+several armature-bound meshes (it frees each evaluated mesh when toggling the next one's modifier): the
+builder exports a joined copy.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
