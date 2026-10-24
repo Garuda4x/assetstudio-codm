@@ -38,7 +38,9 @@ namespace AssetStudio.Codm.Vfs
         public List<QtsPack> QtsPacks { get; } = new List<QtsPack>();
         public QtsfPack BasePack { get; private set; }
         public List<VfsEntry> Entries { get; } = new List<VfsEntry>();
-        private readonly Dictionary<string, VfsEntry> chunks = new Dictionary<string, VfsEntry>(StringComparer.OrdinalIgnoreCase);
+        // chunk names are stable ids, not content hashes: a patch ships a new version under the same name,
+        // so every pack holding a chunk is kept and a bundle takes the copy from its own pack first
+        private readonly Dictionary<string, List<VfsEntry>> chunks = new Dictionary<string, List<VfsEntry>>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, byte[]> chunkCache = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
 
         public bool HasBaseOffsets => BasePack != null && BasePack.HasOffsets;
@@ -112,7 +114,7 @@ namespace AssetStudio.Codm.Vfs
                     if (q.IsChunk)
                     {
                         e.FileName = q.ChunkId + ".cpak";
-                        if (!chunks.ContainsKey(q.ChunkId)) chunks[q.ChunkId] = e;
+                        AddChunk(e);
                     }
                     else
                     {
@@ -130,7 +132,7 @@ namespace AssetStudio.Codm.Vfs
                     if (b.IsChunk)
                     {
                         e.FileName = b.ChunkId + ".cpak";
-                        if (!chunks.ContainsKey(b.ChunkId)) chunks[b.ChunkId] = e;
+                        AddChunk(e);
                     }
                     else
                     {
@@ -140,6 +142,13 @@ namespace AssetStudio.Codm.Vfs
                     Entries.Add(e);
                 }
             }
+        }
+
+        private void AddChunk(VfsEntry e)
+        {
+            if (!chunks.TryGetValue(e.ChunkId, out var list))
+                chunks[e.ChunkId] = list = new List<VfsEntry>(1);
+            list.Add(e);
         }
 
         public int ChunkCount => chunks.Count;
@@ -184,28 +193,38 @@ namespace AssetStudio.Codm.Vfs
             throw new InvalidOperationException("entry without a pack");
         }
 
-        /// <summary>The chunk's bytes, from whichever pack holds it (cached while this instance lives).</summary>
-        public byte[] ReadChunk(string md5)
+        /// <summary>The chunk's bytes: the copy in <paramref name="preferred"/> when that pack has one, else the first pack holding it.</summary>
+        public byte[] ReadChunk(string md5, VfsSource? preferred = null)
         {
+            var e = ChunkEntry(md5, preferred);
+            if (e == null)
+                return null;
+            var key = e.SourceLabel + ":" + md5;
             lock (chunkCache)
             {
-                if (chunkCache.TryGetValue(md5, out var cached)) return cached;
+                if (chunkCache.TryGetValue(key, out var cached)) return cached;
             }
-            if (!chunks.TryGetValue(md5, out var e))
-                return null;
             var data = ReadRaw(e);
             if (data.Length != e.Size)
                 throw new InvalidDataException($"chunk {md5} from {e.SourceLabel}: read {data.Length} bytes, index says {e.Size}");
             lock (chunkCache)
             {
                 if (chunkCache.Count > 64) chunkCache.Clear();
-                chunkCache[md5] = data;
+                chunkCache[key] = data;
             }
             return data;
         }
 
         public bool HasChunk(string md5) => chunks.ContainsKey(md5);
-        public VfsEntry ChunkEntry(string md5) => chunks.TryGetValue(md5, out var e) ? e : null;
+
+        public VfsEntry ChunkEntry(string md5, VfsSource? preferred = null)
+        {
+            if (!chunks.TryGetValue(md5, out var list)) return null;
+            if (preferred.HasValue)
+                foreach (var c in list)
+                    if (c.Source == preferred.Value) return c;
+            return list[0];
+        }
 
         /// <summary>Read an entry; bundles are rewritten into stock Unity 5.6 bundles unless <paramref name="normalize"/> is false.</summary>
         public byte[] ReadBundle(VfsEntry e, bool normalize, BundleNormalizer.Stats stats = null, Action<string> log = null)
@@ -213,7 +232,7 @@ namespace AssetStudio.Codm.Vfs
             var raw = ReadRaw(e);
             if (!normalize || !BundleNormalizer.IsUnityFS(raw))
                 return raw;
-            return BundleNormalizer.Normalize(raw, ReadChunk, stats, log) ?? raw;
+            return BundleNormalizer.Normalize(raw, md5 => ReadChunk(md5, e.Source), stats, log) ?? raw;
         }
 
         public void Dispose()

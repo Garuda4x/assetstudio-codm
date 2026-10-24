@@ -85,7 +85,10 @@ the serialized file in **format 18**:
 - script types and externals keep the stock layout.
 
 Chunks of download-pack bundles live in the download pack, chunks of base-pack bundles in the base
-pack (checked on the Locus bundles and 30 random module bundles).
+pack (checked on the Locus bundles and 30 random module bundles). Chunk names are stable ids, not
+content hashes: the patch pack ships newer versions of base-pack chunks under the same name with a
+different size, so a bundle takes each chunk from its own pack first and falls back to the other packs
+only when its own has none.
 
 Streamed data moved as well: most `Texture2D.m_StreamData` paths are `qtc:/stream/<md5>.cpak` (a
 chunk holding the pixel data) instead of `archive:/CAB-.../CAB-....resS`; a few textures still use the
