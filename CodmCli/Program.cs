@@ -39,7 +39,15 @@ namespace CodmCli
             var command = args[cmdIndex];
 
             var opts = new Options(args.Where((a, i) => i != cmdIndex));
-            cfg = CodmConfig.Load(opts.Get("config"));
+            try
+            {
+                cfg = CodmConfig.Load(opts.Get("config"));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return 1;
+            }
             if (opts.Has("diag"))
                 cfg.Diagnostics = true;
             CodmDiagnostics.Enabled = cfg.Diagnostics;

@@ -130,9 +130,39 @@ namespace AssetStudio.Codm
             return null;
         }
 
-        /// <summary>Load the config at <paramref name="path"/> or the located one; defaults when none exists.</summary>
+        /// <summary>
+        /// Resolve a config file given on the command line: as typed (relative to the current directory),
+        /// else next to the default config (the repository root), else walking up from the exe directory.
+        /// </summary>
+        public static string ResolveConfigPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return null;
+            if (File.Exists(path)) return Path.GetFullPath(path);
+            if (Path.IsPathRooted(path)) return null;
+            var located = Locate();
+            if (located != null)
+            {
+                var candidate = Path.Combine(Path.GetDirectoryName(located), path);
+                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+            }
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            while (!string.IsNullOrEmpty(dir))
+            {
+                var candidate = Path.Combine(dir, path);
+                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar));
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Load the config at <paramref name="path"/> (see <see cref="ResolveConfigPath"/>; a name that
+        /// resolves nowhere is an error) or the located default one; built-in defaults when no file exists.
+        /// </summary>
         public static CodmConfig Load(string path = null)
         {
+            if (path != null)
+                path = ResolveConfigPath(path) ?? throw new FileNotFoundException($"config file not found: {path} (looked in the current directory, next to the default config and above the exe)", path);
             path = path ?? Locate();
             CodmConfig cfg;
             if (path != null && File.Exists(path))
