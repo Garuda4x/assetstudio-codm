@@ -67,6 +67,13 @@ matches the exported PNGs bit for bit, alpha included. PNG export is lossless RG
   own share a sheet of the skin, packed into a free region of it: the Black Noir magazine is on the
   `Rai01` sheet, barrel, muzzle and grip on `Wea01`. No MonoBehaviour names the sheet (component
   bundles only carry `AssetRef`), so the export finds it by UV layout (`MaterialMatcher`).
+- Channel layout of the 1.9.57 weapon skin sheets (DL Q33 Black Noir, all BC7, alpha unused): `_M` R =
+  ambient occlusion, G = metallic mask (hard 0/255 per UV island; glass is 255 with a dark albedo, a
+  mirror-glass trick), B = camo/paint mask (0 on glass and decals); `_N` RG = normal XY, B = gloss
+  (smoothness: glass averages 183, grain and scratches). Evidence: M.R correlates positively with gloss
+  (+0.60) and albedo brightness (+0.58), as AO does; a roughness map would anti-correlate with gloss.
+  Material floats name no channels (`_AO_Intensity`, `_GlossMapScale`, `_SmoothnessTextureChannel` 0,
+  four-colour camo coefficients `_4ColCoef*`). Older character textures put metallic in `_M` R and AO in G.
 
 ## Mesh
 

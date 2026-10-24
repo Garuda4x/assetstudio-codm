@@ -422,6 +422,17 @@ at rest keeps that offset; solving the CODM rest once with the calibrated deltas
 through anim_utils (Idle, ChangeClip, FireBolt, Inspection): gun within 0.0001, wrists within 0.003 of
 the CODM hands on every frame.
 
+## 2026-10-25: IW4 pilot materials and xmodel
+
+**Finding: weapon skin sheets pack their channels differently from the character textures** the
+iw4xTools converter was written for: `_M` R = AO, G = metallic mask, B = camo mask; `_N` B = gloss
+(details and evidence in the format notes). The converter (`blender_convert\ShaderConverter\convert_materials.py`)
+takes the `_M` layout from an optional config entry now (`material_channels`, default unchanged). The
+DL Q33's four materials converted to `_col`/`_spc`/`_cos`/`_nml` TGA folders; the gun xmodel was
+re-exported from the user's edited gun blend with their material names (`codm_export_gun_xmodel.py`,
+bone rests checked equal to the animated rig's within 0.00001). The retarget setup saves its sync pose
+as actions on both rigs and no longer replaces an existing output file.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
