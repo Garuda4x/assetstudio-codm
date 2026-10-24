@@ -45,6 +45,12 @@ after skipping 8 bytes, and after "no align + 8", and takes the first plausible 
 (`1 <= imageCount <= 6`, `-1 <= dimension <= 6`). Texture data is streamed from the bundle's `.resS`.
 DXT1, DXT5 and BC7 are confirmed.
 
+Alpha: 1.9.55-era textures are DXT1 (opaque) or DXT5 where alpha carries data (glass, `_M_trans`,
+camo masks; exported 0-255, colour under alpha 0 kept). The 1.9.57 DL Q33 Black Noir set is BC7 and
+opaque in the game data (254-255 from BC7 rounding): an independent BC7 decode (Pillow) of the raw data
+matches the exported PNGs bit for bit, alpha included. PNG export is lossless RGBA; `"TextureFormat":
+"tga"` writes 32-bit uncompressed TGA instead.
+
 ## Renderer / SkinnedMeshRenderer
 
 - `Renderer`: `m_SortingLayer` (SInt16, stock 5.6+) is **absent**.
