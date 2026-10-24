@@ -1,5 +1,11 @@
 # CoD Mobile install layout
 
+> **Version note.** This page describes the **1.9.55** install (patch 55), which the tooling reads.
+> On 2026-10-24 that install was archived to `Q:\CODMGameApps_Archive` and `Q:\CODMGameApps` was
+> updated to 1.9.57, which packs all bundles into QtsVFS containers and renames `Puffer` /
+> `Extract\55` to `PufferQts` / `ExtractQts\57`. The tooling does not read 1.9.57 yet; the findings
+> are in [progress.md](progress.md) (2026-10-24 entry).
+
 Install root: `Q:\CODMGameApps\CN\emulator\Extract\CODM` (CN build, PC emulator package, patch 55,
 Unity `5.6.4p4` modified, IL2CPP). Read only. Never run, patch or update the game.
 

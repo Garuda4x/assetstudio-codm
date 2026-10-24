@@ -4,9 +4,11 @@ Private, single-user fork of [Perfare/AssetStudio](https://github.com/Perfare/As
 reads the modified Unity 5.6.4 engine used by **Call of Duty Mobile (CN build)** and exports weapons,
 cosmetics, animations, textures and sounds for porting into other games and mods.
 
-This repository is never published. It is pinned to the game install at
-`Q:\CODMGameApps\CN\emulator\Extract\CODM` (patch 55). **The game must never be launched, patched
-or updated from this machine; the tooling only reads files.**
+This repository is never published. It is pinned to the **1.9.55 (patch 55)** game files, since
+2026-10-24 archived at `Q:\CODMGameApps_Archive\CN\emulator\Extract\CODM`; the live install at
+`Q:\CODMGameApps` is 1.9.57, whose packed QtsVFS containers are not supported yet (see
+[docs/progress.md](docs/progress.md)). **The game must never be launched, patched or updated from this
+machine; the tooling only reads files.**
 
 ## What it does
 
