@@ -30,7 +30,7 @@ namespace AssetStudio.Codm
         public int Failed { get; private set; }
 
 
-        public static string DefaultCachePath(CodmConfig cfg) => cfg.ResolveLocalPath(Path.Combine("cache", "cab-index.json"));
+        public static string DefaultCachePath(CodmConfig cfg) => cfg.CachePath("cab-index.json");
 
         /// <summary>Build (or refresh) the index for every pak in <paramref name="index"/>, reusing the cache where possible.</summary>
         public static CabIndex Build(PakIndex index, CodmConfig cfg, Action<string> progress = null, bool rebuild = false)

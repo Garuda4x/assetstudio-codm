@@ -30,6 +30,18 @@ namespace AssetStudio
         public List<FileIdentifier> m_Externals;
         public List<SerializedType> m_RefTypes;
         public string userInformation;
+        /// <summary>CoD Mobile 1.9.57+ (format 18): the "qtc:/split/&lt;md5&gt;.cpak" references stored before the type list.</summary>
+        public List<string> codmSplitRefs;
+
+        private static bool PeekIsQtcString(FileReader reader)
+        {
+            var p = reader.Position;
+            if (p + 4 > reader.BaseStream.Length)
+                return false;
+            var b = reader.ReadBytes(4);
+            reader.Position = p;
+            return b[0] == (byte)'q' && b[1] == (byte)'t' && b[2] == (byte)'c' && b[3] == (byte)':';
+        }
 
         public SerializedFile(FileReader reader, AssetsManager assetsManager)
         {
@@ -86,6 +98,24 @@ namespace AssetStudio
             if (header.m_Version >= SerializedFileFormatVersion.HasTypeTreeHashes)
             {
                 m_EnableTypeTree = reader.ReadBoolean();
+            }
+
+            // CoD Mobile 1.9.57 writes format 18 and inserts a string list here: u32 count, then that
+            // many NUL-terminated "qtc:/split/<md5>.cpak" references, before the type list.
+            if (header.m_Version == SerializedFileFormatVersion.RefactorShareableTypeTreeData)
+            {
+                var pos = reader.Position;
+                var n = reader.ReadInt32();
+                if (n == 0 || (n > 0 && n <= 1024 && PeekIsQtcString(reader)))
+                {
+                    codmSplitRefs = new List<string>(n);
+                    for (int i = 0; i < n; i++)
+                        codmSplitRefs.Add(reader.ReadStringToNull());
+                }
+                else
+                {
+                    reader.Position = pos;
+                }
             }
 
             // Read Types

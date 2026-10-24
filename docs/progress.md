@@ -160,6 +160,47 @@ config; and the chunk-to-file mapping for the `.cpak` entries. Sounds need only 
 Pointing `GameRoot` at `Q:\CODMGameApps_Archive\CN\emulator\Extract\CODM` restores the 1.9.55 workflow
 meanwhile.
 
+## 2026-10-24, later: config switch, Qts index decoded, format 18 decoded
+
+**Built.** `CacheDir` in the config and `CodmConfig.CachePath` (caches of different game versions no
+longer collide); `codm.config.json` now points at the 1.9.55 archive, `codm.config.1957.json` at the
+live install (sound banks only, `cache-1957`, `exports-1957`); the CLI accepts `--config` before the
+command; the GUI has **CODM > Switch config...** (remembered in the user settings) and shows the current
+file in the menu. `SerializedFile` skips the version-18 string list.
+
+**Qts pack (PufferQts / ExtractQts), verified on ~150 entries.** Index file (`AssetBundle.pak`, magic
+`ed ff 34 01`): header `[magic][stamp][4096][128000][QTSF section offset][...][0x34][table count][part
+count][part descriptor offset][...]`; a directory of `(offset, size)` pairs from 0x34, one **block
+table** per entry; 16-byte part descriptors `98 3e 34 01, stamp, 4096, 128000` (96 for PufferQts, 3 for
+the patch pack, in part-file order, stamps equal the part files' header stamps); then a QTSF node section
+(same node layout as the base pack index) with one record per entry: `u32 name length, u32 20, u32
+uncompressed size, u32 record ordinal, u32 timestamp, u32 0x01001389, u32 x, name`. Block table of
+entry `i` (same ordinal): `u16 block count, u16 last block raw size, u32 0, u32 end offsets of blocks
+0..n-2, then (u32 x re-encoded, u32 P << 16, u32 Q), optional extra values (some entries carry a second
+tuple and flag bytes), 16-byte hash`. **Location rule:** `part = Q / 128000`, `logical = Q % 128000`,
+`physical = pageMap[logical]`, data at `32 + 128000 + 512000 + physical * 4096` in `AssetBundle_<part>.pak`
+(part file = 32-byte header, 128 000 flag bytes, 128 000 x u32 page map, 128 000 data pages). An
+entry is its LZ4 blocks back to back, 16 KB raw each, compressed sizes from the block table. The
+record's timestamp and `x` are not needed. Named module bundles (the weapons) are stored whole: the
+Locus railgun entries decode to `UnityFS` headers. The `.cpak` chunk entries use the same scheme.
+`AssetBundle_Merge.pak` is a copy of the index; `QtcLocalFile.pak` and `DynamicBaseDB.pak` list audio
+and video paths in plain text.
+
+**Format 18.** See [codm-formats.md](codm-formats.md#serialized-file-format-18-1957): string list of
+`qtc:/split/<md5>.cpak` chunk references, variable-length object entries with a flag that moves the
+payload into a chunk at an offset, stock script types and externals. The three chunks of the probe
+bundle sit in the base pack (parts 7, 16, 17) with exactly the sizes the object table implies.
+
+**Base pack location, still open.** Index records give size and part but no offset; data node hashes
+are per block (not the entry id); the 375-entry table at 0x1000 of each part matches neither node nor
+entry starts in any unit tried (16 to 4096 bytes). Entry boundaries are visible while walking nodes
+(a block shorter than 16 KB ends an entry; entries follow `packorder.bin`), so a one-time sequential
+walk per part builds the offset cache.
+
+**Dead ends today.** The record timestamp as part selector (it is a build time); `x` as page, byte or
+16-byte offset; the second tuple in oversized block tables as location (the first tuple is right); md5 /
+sha1 / sha256 of 25 spellings of the old pak names as `.cpak` names (chunks are content pieces).
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
@@ -169,4 +210,4 @@ meanwhile.
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.
 - Optional: embedded textured mesh preview in the browser; standalone GUI.
-- 1.9.57: container readers (QTSF/zstd, Qts/LZ4), SerializedFile 18, chunk mapping, new folders (see the 2026-10-24 entry).
+- 1.9.57: Qts reader (index + LZ4 + page map, format known), base-pack node walk for entry offsets, format-18 normalizer (external payloads from chunks), `codm unpack`, then container-aware catalog.

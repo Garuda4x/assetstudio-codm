@@ -11,6 +11,27 @@ per-field logs that were used to find these layouts are still in the code behind
 - `AssetsManager.ReadAssets` wraps `AnimationClip`, `AnimatorController` and `SkinnedMeshRenderer` in
   try/catch; a failed object becomes a bare `Object` stub (the GUI shows `[PARSE FAILED]`).
 
+## Serialized file format 18 (1.9.57)
+
+The 1.9.57 bundles write `SerializedFile` version 18 (1.9.55 wrote 17) with three changes, all
+confirmed on a rebuilt base-pack bundle:
+
+- after the type-tree flag: `u32 count` and that many NUL-terminated strings `qtc:/split/<md5>.cpak`
+  (the chunk files holding this file's external object payloads), then the usual type list;
+- object entries are variable length: `i64 pathID, u32 flag`; `flag == 0`: `u32 byteStart, u32 byteSize,
+  i32 typeID` (payload in this file's data section, as before); `flag == 1`: `u32 refIndex, u32 offset,
+  u32 byteSize, i32 typeID` (payload at `offset` inside chunk `refIndex` of the string list). In the
+  probe 4 270 of 10 221 objects (GameObjects, Transforms, MonoBehaviours) were external, spread over
+  three chunks whose sizes equal the highest `offset + byteSize` referencing them;
+- script types and externals keep the stock layout.
+
+The chunks are pack entries named `<md5>.cpak` (base pack), `dynamic/split/<md5>.cpak` (PufferQts) or
+`split/<md5>.cpak` (patch pack). Reading a 1.9.57 bundle therefore means: decompress the bundle,
+fetch its chunks, and either feed the reader a chunk resolver or rewrite the file into a stock
+version-17 layout with the external payloads appended to the data section (the planned
+"normalizer", which also lets `codm unpack` produce bundles the unchanged pipeline reads).
+`SerializedFile` already skips the string list (`codmSplitRefs`); the object table is not handled yet.
+
 ## Texture2D
 
 Two differences after the `m_IsReadable` booleans:

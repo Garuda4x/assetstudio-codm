@@ -26,7 +26,9 @@ namespace AssetStudioGUI
 
         public static CodmConfig LoadConfig()
         {
-            Config = CodmConfig.Load();
+            var chosen = Properties.Settings.Default.codmConfigPath;
+            var path = !string.IsNullOrEmpty(chosen) && System.IO.File.Exists(chosen) ? chosen : null;
+            Config = CodmConfig.Load(path);
             CodmDiagnostics.Enabled = Config.Diagnostics;
             if (string.IsNullOrEmpty(Config.VgmstreamPath))
                 Config.VgmstreamPath = WemTools.FindVgmstream() ?? "";
@@ -36,6 +38,14 @@ namespace AssetStudioGUI
         public static CodmConfig EnsureConfig()
         {
             return Config ?? LoadConfig();
+        }
+
+        /// <summary>Use another config file from now on (remembered in the user settings); null returns to the default lookup.</summary>
+        public static CodmConfig SwitchConfig(string path)
+        {
+            Properties.Settings.Default.codmConfigPath = path ?? "";
+            Properties.Settings.Default.Save();
+            return LoadConfig();
         }
 
         public static Task EnsureLoadedAsync(Action<string> progress, bool force = false)

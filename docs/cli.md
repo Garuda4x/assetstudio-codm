@@ -1,8 +1,9 @@
 # codm.exe command line
 
 Built from `CodmCli` to `CodmCli\bin\Debug\net472\codm.exe`. It reads `codm.config.json` (found by
-walking up from the exe directory, so the copy at the repository root is used). Global options:
-`--config <file>`, `--diag` (reader diagnostics on stderr). Progress goes to stderr, results to stdout.
+walking up from the exe directory, so the copy at the repository root is used). Global options, before
+or after the command: `--config <file>` (another config, e.g. `codm --config codm.config.1957.json banks`),
+`--diag` (reader diagnostics on stderr). Progress goes to stderr, results to stdout.
 
 | Command | What it does |
 |---|---|

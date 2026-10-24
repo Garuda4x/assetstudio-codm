@@ -345,3 +345,5 @@ exports/
 
 # derived indexes
 cache/
+cache-*/
+exports-*/

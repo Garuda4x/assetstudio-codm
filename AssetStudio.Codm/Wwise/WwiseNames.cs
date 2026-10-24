@@ -58,7 +58,7 @@ namespace AssetStudio.Codm.Wwise
 
         public static WwiseNames Load(CodmConfig cfg)
         {
-            var n = new WwiseNames { Path = cfg.ResolveLocalPath(System.IO.Path.Combine("cache", "wwise-names.json")) };
+            var n = new WwiseNames { Path = cfg.CachePath("wwise-names.json") };
             if (File.Exists(n.Path))
             {
                 try

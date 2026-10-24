@@ -63,6 +63,10 @@ namespace AssetStudio.Codm
         [JsonProperty(Order = 9)]
         public bool Diagnostics { get; set; } = false;
 
+        /// <summary>Folder for the index caches (cab-index, wwise-names...), relative to the config file. Configs for different game versions must not share it.</summary>
+        [JsonProperty(Order = 10)]
+        public string CacheDir { get; set; } = "cache";
+
         [JsonIgnore]
         public string ConfigPath { get; private set; }
 
@@ -71,6 +75,8 @@ namespace AssetStudio.Codm
 
         public string ResolveGamePath(string rel) => Path.IsPathRooted(rel) ? rel : Path.Combine(GameRoot, rel);
         public string ResolveLocalPath(string rel) => Path.IsPathRooted(rel) ? rel : Path.GetFullPath(Path.Combine(ConfigDir, rel));
+        /// <summary>Full path of a cache file inside <see cref="CacheDir"/>.</summary>
+        public string CachePath(string fileName) => ResolveLocalPath(Path.Combine(string.IsNullOrEmpty(CacheDir) ? "cache" : CacheDir, fileName));
 
         [JsonIgnore]
         public IEnumerable<string> PakFolderPaths => PakFolders.Select(ResolveGamePath);

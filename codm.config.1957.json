@@ -1,0 +1,18 @@
+{
+  "GameRoot": "Q:\\CODMGameApps\\CN\\emulator\\Extract\\CODM",
+  "PakFolders": [],
+  "SoundBankFolders": [
+    "CODM_Data\\StreamingAssets\\Audio\\GeneratedSoundBanks\\Windows",
+    "PersistentData\\PufferQts\\Audio\\GeneratedSoundBanks\\Windows",
+    "PersistentData\\PufferQts\\Audio\\GeneratedSoundBanks\\Windows_HQ",
+    "PersistentData\\ExtractQts\\57\\Audio\\GeneratedSoundBanks\\Windows"
+  ],
+  "VgmstreamPath": "",
+  "ExportRoot": "exports-1957",
+  "PreferredLanguage": "English(US)",
+  "TextureFormat": "png",
+  "ScaleFactor": 1.0,
+  "SourcePriority": [ "puffer", "extract", "streaming" ],
+  "Diagnostics": false,
+  "CacheDir": "cache-1957"
+}

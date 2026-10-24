@@ -310,5 +310,17 @@ namespace AssetStudioGUI.Properties {
                 this["exportFbx"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string codmConfigPath {
+            get {
+                return ((string)(this["codmConfigPath"]));
+            }
+            set {
+                this["codmConfigPath"] = value;
+            }
+        }
     }
 }

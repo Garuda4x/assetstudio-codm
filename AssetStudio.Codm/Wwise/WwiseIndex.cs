@@ -201,7 +201,7 @@ namespace AssetStudio.Codm.Wwise
             map[id] = new HircRef { Type = type, Bank = bank, Copies = 1 };
         }
 
-        public string TokensCachePath(CodmConfig cfg) => cfg.ResolveLocalPath(Path.Combine("cache", "wwise-bank-tokens.json"));
+        public string TokensCachePath(CodmConfig cfg) => cfg.CachePath("wwise-bank-tokens.json");
 
         /// <summary>Load the name cache and the bank-token cache; when the token cache is missing, build both by guessing.</summary>
         public void LoadNames(CodmConfig cfg, IEnumerable<string> weaponTokens, Action<string> progress = null, bool rebuild = false)

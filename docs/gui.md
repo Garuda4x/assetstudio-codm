@@ -8,8 +8,9 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 | Item | Action |
 |---|---|
 | Weapon browser... (Ctrl+W) | opens the browser; the pak and bank index is built in the background the first time (about 15 s) |
-| Reload codm.config.json | re-reads the config and rebuilds the index |
-| Open codm.config.json | opens the config in the default editor (creates it with defaults when missing) |
+| Switch config... | picks another config file (`codm.config.1957.json` for the live install); remembered across sessions, the menu shows the current file |
+| Reload config | re-reads the config and rebuilds the index |
+| Open config file | opens the config in the default editor (creates it with defaults when missing) |
 | Open export folder | opens `ExportRoot` |
 | Reader diagnostics in log | toggles the verbose per-field reader logging |
 

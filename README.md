@@ -72,9 +72,16 @@ so Debug and Release builds share it:
   "TextureFormat": "png",
   "ScaleFactor": 1.0,
   "SourcePriority": [ "puffer", "extract", "streaming" ],
-  "Diagnostics": false
+  "Diagnostics": false,
+  "CacheDir": "cache"
 }
 ```
+
+Two configs live at the repository root: `codm.config.json` (the 1.9.55 archive, the one the tooling
+fully supports) and `codm.config.1957.json` (the live 1.9.57 install: sound banks only until the
+container readers exist, its own `cache-1957` and `exports-1957`). The CLI takes `--config <file>`, the
+GUI has **CODM > Switch config...** and remembers the choice. Configs for different game versions must
+not share `CacheDir`.
 
 Set `VgmstreamPath` to `vgmstream-cli.exe` to get `.wav` next to the `.wem` files. `Diagnostics`
 turns the per-field reader logging back on (it is noisy and only useful when a bundle fails to parse).
@@ -84,11 +91,11 @@ Two more files live next to the config:
 - `weapon-classes.json`: sound class per base weapon (`"locus": "sniper"`). A built-in list covers the
   well-known weapons; this file overrides it. The class picks the `wpn_<class>` bank for the base weapon
   sounds (`codm class <weapon> <class>` or the combo box in the browser).
-- `cache/cab-index.json`: which pak contains which serialized file (CAB). Built on first use, about five
+- `<CacheDir>/cab-index.json`: which pak contains which serialized file (CAB). Built on first use, about five
   minutes for 17 000 paks, then reused. Needed to load the bundles a weapon references.
-- `cache/wwise-names.json` and `cache/wwise-bank-tokens.json`: Wwise event names recovered by hashing
+- `<CacheDir>/wwise-names.json` and `<CacheDir>/wwise-bank-tokens.json`: Wwise event names recovered by hashing
   candidate names (FNV-1) and the weapon each bank belongs to. Built on first use (about five minutes).
-- `cache/container-index.json`: asset paths inside the 2 000 attachment bundles, used to link magazines,
+- `<CacheDir>/container-index.json`: asset paths inside the 2 000 attachment bundles, used to link magazines,
   barrels and stocks to weapons. Built in the background by the browser or by `codm components`.
 
 ## Workflow

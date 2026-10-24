@@ -27,7 +27,7 @@ namespace AssetStudio.Codm
 
         public int PakCount => byPak.Count;
 
-        public static string DefaultCachePath(CodmConfig cfg) => cfg.ResolveLocalPath(System.IO.Path.Combine("cache", "container-index.json"));
+        public static string DefaultCachePath(CodmConfig cfg) => cfg.CachePath("container-index.json");
 
         public IReadOnlyList<string> ContainersOf(string pakPath)
         {

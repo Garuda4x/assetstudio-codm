@@ -23,14 +23,33 @@ namespace AssetStudioGUI
             var codmMenu = new ToolStripMenuItem("CODM");
             var browser = new ToolStripMenuItem("Weapon browser...", null, (s, e) => ShowCodmBrowser());
             browser.ShortcutKeys = Keys.Control | Keys.W;
-            var reload = new ToolStripMenuItem("Reload codm.config.json", null, (s, e) =>
+            var reload = new ToolStripMenuItem("Reload config", null, (s, e) =>
             {
                 var c = CodmSession.LoadConfig();
                 codmDiagnosticsMenuItem.Checked = c.Diagnostics;
                 StatusStripUpdate($"CODM config reloaded from {c.ConfigPath}");
                 codmBrowser?.ReloadIndex();
             });
-            var openCfg = new ToolStripMenuItem("Open codm.config.json", null, (s, e) =>
+            var switchCfg = new ToolStripMenuItem("Switch config...", null, (s, e) =>
+            {
+                var cur = CodmSession.EnsureConfig();
+                using (var dlg = new OpenFileDialog
+                {
+                    Title = "Choose a CODM config file",
+                    Filter = "CODM config (*.json)|*.json|All files|*.*",
+                    InitialDirectory = cur.ConfigDir,
+                    FileName = Path.GetFileName(cur.ConfigPath),
+                })
+                {
+                    if (dlg.ShowDialog(this) != DialogResult.OK)
+                        return;
+                    var c = CodmSession.SwitchConfig(dlg.FileName);
+                    codmDiagnosticsMenuItem.Checked = c.Diagnostics;
+                    StatusStripUpdate($"CODM config: {c.ConfigPath} (game root {c.GameRoot})");
+                    codmBrowser?.ReloadIndex();
+                }
+            });
+            var openCfg = new ToolStripMenuItem("Open config file", null, (s, e) =>
             {
                 var c = CodmSession.EnsureConfig();
                 if (!File.Exists(c.ConfigPath))
@@ -46,10 +65,17 @@ namespace AssetStudioGUI
             codmDiagnosticsMenuItem = new ToolStripMenuItem("Reader diagnostics in log") { CheckOnClick = true, Checked = cfg.Diagnostics };
             codmDiagnosticsMenuItem.CheckedChanged += (s, e) => CodmDiagnostics.Enabled = codmDiagnosticsMenuItem.Checked;
 
+            codmMenu.DropDownOpening += (s, e) =>
+            {
+                var c = CodmSession.EnsureConfig();
+                switchCfg.Text = $"Switch config...  (current: {Path.GetFileName(c.ConfigPath)})";
+            };
+
             codmMenu.DropDownItems.AddRange(new ToolStripItem[]
             {
                 browser,
                 new ToolStripSeparator(),
+                switchCfg,
                 reload,
                 openCfg,
                 openExports,

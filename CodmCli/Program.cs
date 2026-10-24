@@ -27,13 +27,16 @@ namespace CodmCli
         {
             Console.OutputEncoding = Encoding.UTF8;
             Logger.Default = new ConsoleLogger();
-            if (args.Length == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help")
+            // global options (--config <file>, --diag) may precede the command
+            var cmdIndex = Options.FindCommandIndex(args);
+            if (cmdIndex < 0 || args[cmdIndex] == "-h" || args[cmdIndex] == "--help" || args[cmdIndex] == "help")
             {
                 PrintUsage();
                 return 0;
             }
+            var command = args[cmdIndex];
 
-            var opts = new Options(args.Skip(1));
+            var opts = new Options(args.Where((a, i) => i != cmdIndex));
             cfg = CodmConfig.Load(opts.Get("config"));
             if (opts.Has("diag"))
                 cfg.Diagnostics = true;
@@ -41,7 +44,7 @@ namespace CodmCli
 
             try
             {
-                switch (args[0].ToLowerInvariant())
+                switch (command.ToLowerInvariant())
                 {
                     case "config": return CmdConfig(opts);
                     case "decode": return CmdCipher(opts, decode: true);
@@ -70,7 +73,7 @@ namespace CodmCli
                     case "mono": return CmdMono(opts);
                     case "typetree": return CmdTypeTree(opts);
                     default:
-                        Console.Error.WriteLine($"Unknown command '{args[0]}'.");
+                        Console.Error.WriteLine($"Unknown command '{command}'.");
                         PrintUsage();
                         return 2;
                 }
@@ -115,7 +118,7 @@ namespace CodmCli
             Console.WriteLine("  mono <pak>                     list MonoScript / MonoBehaviour and embedded strings");
             Console.WriteLine("  typetree <pak>                 report whether the bundle carries type trees");
             Console.WriteLine();
-            Console.WriteLine("Global: --config <file>  --diag");
+            Console.WriteLine("Global (before or after the command): --config <file>  --diag");
         }
 
         // ---------------------------------------------------------------- helpers
@@ -212,6 +215,7 @@ namespace CodmCli
             var vgm = string.IsNullOrEmpty(cfg.VgmstreamPath) ? WemTools.FindVgmstream() : cfg.VgmstreamPath;
             Console.WriteLine($"vgmstream   : {(vgm ?? "(not configured, wem files will not be converted)")}");
             Console.WriteLine($"export root : {cfg.ExportRootPath}");
+            Console.WriteLine($"cache dir   : {cfg.CachePath("")}");
             Console.WriteLine($"textures    : {cfg.ImageFormat}, scale {cfg.ScaleFactor}");
             if (o.Has("write"))
             {
@@ -954,6 +958,26 @@ namespace CodmCli
         {
             "config", "tsv", "out", "csv", "kind", "max", "top",
         };
+
+        /// <summary>Index of the command word: the first argument that is neither an option nor the value of a value-taking option.</summary>
+        public static int FindCommandIndex(string[] args)
+        {
+            for (var i = 0; i < args.Length; i++)
+            {
+                var a = args[i];
+                if (a.StartsWith("--") || (a.StartsWith("-") && a.Length == 2))
+                {
+                    var key = a.TrimStart('-');
+                    if (key == "h" || key == "help")
+                        return i;
+                    if (key.IndexOf('=') < 0 && ValueKeys.Contains(key))
+                        i++;
+                    continue;
+                }
+                return i;
+            }
+            return -1;
+        }
 
         public Options(IEnumerable<string> args)
         {
