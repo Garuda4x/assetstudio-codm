@@ -52,6 +52,9 @@ attachment index are built in the background: the first time on 1.9.57 that read
   - **Bank variants**: also dump the lettered banks (`247a`, `247c`...), most likely other skins'
     sets. Off by default; `<id>` and `<id>p3` are always taken.
   - **FX textures**, **Include base weapon**, **Include components**, **Resolve dependencies**.
+    Component paks are shared buckets (`component/bar/37.2` holds the barrels of many weapons); once
+    the attachment index is built, only the attachments linked to this weapon and its bases are
+    exported from them.
 
   Progress and warnings show in the log at the bottom. HQ bank copies (`Windows_HQ`) are used when the
   game shipped one; everything else is 22 kHz source material.

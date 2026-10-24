@@ -295,11 +295,37 @@ or local to the entry's part): reading run `r` from logical page `V[r-1]` breaks
 begins. All failing download-pack entries carry a run table; plain entries (including the 92 that
 cross a part boundary) all decode.
 
+## 2026-10-24, late: skin without its first-person mesh, components export whole buckets
+
+First real use of the on-demand GUI: DL Q33 Black Noir (`mainweapon_72022_dlq33blacknoirblp`, new in
+1.9.57) exported with base, dependencies and **Include components**. Two faults, both in the export.
+
+**The 1P model was a bare skeleton.** The skin bundle carries two copies of the first-person rig: the
+`.prefab`, whose Animator has the override controller but whose SkinnedMeshRenderer has an empty mesh
+reference (filled in at runtime), and the imported `.fbx` with the 4 856-vertex mesh. The export keeps
+the copy that resolves the most clips; alone the `.fbx` copy wins (27 clips from the bundle against 26
+overrides), but with the base chain loaded the override controller resolves 31 (35 with dependencies)
+and the prefab won.
+Now, when the copy with the most clips has no mesh, the export takes the rig and mesh of a copy that has
+one and the clips of the other (logged). Curves of the clips are identical to before (427 per clip).
+
+**1 770 models.** Component paks are version buckets (`component/bar/37.2` holds the barrels of about
+twenty weapons); a pak linked through one matching container path was exported whole. With components
+included, only the objects of the container paths that tie a pak to the weapon or its bases (the
+asset and its preload range) are exported, models and textures alike; paks linked by name only
+(sights named after the base) still export whole. Result: 141 models and 79 textures, all DL Q33 parts
+(own, base chain, the other DL Q33 gunsmith barrels, magazines, rails), no models without a mesh.
+
+**Not this bug.** The 1.9.55 Beam Saber (`meleeweapon_59823`) 1P model has no mesh either, but there
+no copy has one: its renderer's mesh reference (path id `501 << 32`) resolves to nothing.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
   name recovery (90 of several thousand ids named).
-- Source of the characters' first-person arms mesh.
+- Source of the characters' first-person arms mesh, and of the Beam Saber's (`meleeweapon_59823`).
+- Dependency resolution with components included follows the other weapons' attachments in the
+  shared buckets too (60-pak limit reached for the DL Q33); scope it to the exported objects.
 - Decrypt `DataTableBytes` by static analysis of `CODM.exe` (the real manifest: `WeaponAsset`,
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.

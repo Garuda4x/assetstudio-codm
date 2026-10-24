@@ -95,7 +95,7 @@ namespace AssetStudio.Codm
 
             var paks = SelectPaks(w, o);
             currentBanks = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).Concat(w.SharedBanks).Distinct().ToList();
-            ExportBundleSet(paks, dir, o, report, log);
+            ExportBundleSet(paks, dir, o, report, log, o.IncludeComponents ? ComponentScope(w) : null);
             currentBanks = null;
 
             if (o.Sounds && wwise != null)
@@ -126,8 +126,55 @@ namespace AssetStudio.Codm
             return report;
         }
 
+        /// <summary>
+        /// Component paks are version buckets (component/bar/37.2) holding the attachments of many weapons.
+        /// Per pak linked through its container paths: the paths that tie it to this weapon or its bases.
+        /// Paks linked by name only (sights named after the base weapon) are not listed and export whole.
+        /// </summary>
+        private static Dictionary<string, HashSet<string>> ComponentScope(WeaponEntry w)
+        {
+            var scope = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pak in w.AllComponents())
+            {
+                var paths = w.ComponentPaths(pak);
+                if (paths.Count > 0)
+                    scope[pak.FullPath] = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+            }
+            return scope;
+        }
+
+        /// <summary>
+        /// Objects of the scoped bundles that belong to the matching container paths: each path's asset and
+        /// everything in its preload range (the prefab hierarchy, meshes, materials, textures).
+        /// </summary>
+        private static HashSet<Object> ScopedObjects(AssetsManager am, Dictionary<string, HashSet<string>> scope)
+        {
+            var allowed = new HashSet<Object>();
+            foreach (var file in am.assetsFileList)
+            {
+                if (!scope.TryGetValue(file.originalPath ?? file.fullName ?? "", out var paths))
+                    continue;
+                foreach (var ab in file.Objects.OfType<AssetBundle>())
+                {
+                    foreach (var c in ab.m_Container)
+                    {
+                        if (!paths.Contains(c.Key))
+                            continue;
+                        if (c.Value.asset.TryGet(out var asset))
+                            allowed.Add(asset);
+                        var end = Math.Min(c.Value.preloadIndex + c.Value.preloadSize, ab.m_PreloadTable.Length);
+                        for (var i = Math.Max(c.Value.preloadIndex, 0); i < end; i++)
+                            if (ab.m_PreloadTable[i].TryGet(out var dep))
+                                allowed.Add(dep);
+                    }
+                }
+            }
+            return allowed;
+        }
+
         /// <summary>Load a set of paks (plus their dependencies) and export their models and textures.</summary>
-        private void ExportBundleSet(List<PakEntry> paks, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log)
+        private void ExportBundleSet(List<PakEntry> paks, string dir, WeaponExportOptions o, WeaponExportReport report, Action<string> log,
+            Dictionary<string, HashSet<string>> componentScope = null)
         {
             if (o.Models || o.Textures)
             {
@@ -154,10 +201,17 @@ namespace AssetStudio.Codm
                     }
 
                     var weaponFiles = new HashSet<string>(report.PaksLoaded, StringComparer.OrdinalIgnoreCase);
+                    Func<SerializedFile, Object, bool> inScope = null;
+                    if (componentScope != null && componentScope.Count > 0)
+                    {
+                        var allowed = ScopedObjects(am, componentScope);
+                        inScope = (f, obj) => !componentScope.ContainsKey(f.originalPath ?? f.fullName ?? "") || allowed.Contains(obj);
+                        log($"[Export] {componentScope.Count} component pak(s) shared with other weapons: only this weapon's attachments are exported from them");
+                    }
                     if (o.Models)
-                        ExportModels(am, Path.Combine(dir, "models"), report, log, weaponFiles, o.AllPrefabCopies);
+                        ExportModels(am, Path.Combine(dir, "models"), report, log, weaponFiles, o.AllPrefabCopies, inScope);
                     if (o.Textures)
-                        ExportTextures(am, Path.Combine(dir, "textures"), report, log, weaponFiles);
+                        ExportTextures(am, Path.Combine(dir, "textures"), report, log, weaponFiles, inScope);
                 }
                 finally
                 {
@@ -174,13 +228,15 @@ namespace AssetStudio.Codm
         /// <summary>Banks of the weapon being exported, for the notetrack sheet (set by ExportWeapon).</summary>
         private List<Wwise.WwiseBankInfo> currentBanks;
 
-        public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null, bool allPrefabCopies = false)
+        public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null, bool allPrefabCopies = false,
+            Func<SerializedFile, Object, bool> inScope = null)
         {
             var exportedRoots = new HashSet<GameObject>();
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             CastExporter.SkipEmptyAnimations = true;
 
             bool IsOwn(SerializedFile f) => ownBundles == null || ownBundles.Contains(f.originalPath ?? f.fullName ?? "");
+            bool InScope(SerializedFile f, Object obj) => inScope == null || inScope(f, obj);
 
             // Every module copy of a prefab is a candidate; the copy whose controller resolves the most
             // clips wins (a stripped copy with no controller often sits next to the real one).
@@ -189,7 +245,7 @@ namespace AssetStudio.Codm
             {
                 foreach (var obj in file.Objects)
                 {
-                    if (!(obj is Animator animator) || !animator.m_GameObject.TryGet(out var go))
+                    if (!(obj is Animator animator) || !animator.m_GameObject.TryGet(out var go) || !InScope(file, go))
                         continue;
                     candidates.Add((animator, go, file, ClipsForAnimator(animator, file)));
                 }
@@ -197,10 +253,26 @@ namespace AssetStudio.Codm
             var ordered = allPrefabCopies
                 ? candidates
                 : candidates.GroupBy(c => SafeName(c.go.m_Name), StringComparer.OrdinalIgnoreCase)
-                    .Select(g => g.OrderByDescending(c => c.clips.Length).ThenBy(c => cfg.SourceRank(SourceOf(c.file))).First())
+                    .Select(g =>
+                    {
+                        var best = g.OrderByDescending(c => c.clips.Length).ThenBy(c => cfg.SourceRank(SourceOf(c.file))).First();
+                        if (HasMeshInTree(best.go))
+                            return best;
+                        // the prefab with the controller can leave its renderer's mesh empty (filled in at
+                        // runtime) while the imported model next to it carries the mesh: take the rig and mesh
+                        // of that copy and the clips of the prefab
+                        var withMesh = g.Where(c => HasMeshInTree(c.go))
+                            .OrderByDescending(c => c.clips.Length).ThenBy(c => cfg.SourceRank(SourceOf(c.file))).FirstOrDefault();
+                        if (withMesh.go == null)
+                            return best;
+                        log($"[Export] {best.go.m_Name}: the copy with {best.clips.Length} clip(s) has no mesh, using the mesh of the {SourceLabel(withMesh.file)} copy");
+                        return (animator: withMesh.animator, go: withMesh.go, file: withMesh.file,
+                            clips: best.clips.Length > withMesh.clips.Length ? best.clips : withMesh.clips);
+                    })
                     .ToList();
+            var chosen = new HashSet<GameObject>(ordered.Select(c => c.go));
             foreach (var c in candidates)
-                if (!ordered.Contains(c))
+                if (!chosen.Contains(c.go))
                     report.SkippedPrefabCopies.Add($"{c.go.m_Name} ({SourceLabel(c.file)}, {c.clips.Length} clips)");
 
             foreach (var cand in ordered)
@@ -262,7 +334,7 @@ namespace AssetStudio.Codm
                         continue;
                     if (go.m_Transform.m_Father != null && go.m_Transform.m_Father.TryGet(out _))
                         continue; // not a root
-                    if (exportedRoots.Contains(go) || HasAnimatorInTree(go) || !HasRendererInTree(go))
+                    if (exportedRoots.Contains(go) || HasAnimatorInTree(go) || !HasRendererInTree(go) || !InScope(file, go))
                         continue;
                     if (!allPrefabCopies && usedNames.Contains(SafeName(go.m_Name)))
                     {
@@ -346,6 +418,22 @@ namespace AssetStudio.Codm
             return false;
         }
 
+        private static bool HasMeshInTree(GameObject go)
+        {
+            if (go.m_SkinnedMeshRenderer != null && go.m_SkinnedMeshRenderer.m_Mesh.TryGet(out _))
+                return true;
+            if (go.m_MeshRenderer != null && go.m_MeshFilter != null && go.m_MeshFilter.m_Mesh.TryGet(out _))
+                return true;
+            if (go.m_Transform == null)
+                return false;
+            foreach (var c in go.m_Transform.m_Children)
+            {
+                if (c.TryGet(out var t) && t.m_GameObject.TryGet(out var child) && HasMeshInTree(child))
+                    return true;
+            }
+            return false;
+        }
+
         private static bool HasRendererInTree(GameObject go)
         {
             if (go.m_MeshRenderer != null || go.m_SkinnedMeshRenderer != null)
@@ -393,7 +481,8 @@ namespace AssetStudio.Codm
             log($"[Export] {count} texture(s)");
         }
 
-        public void ExportTextures(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null)
+        public void ExportTextures(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null,
+            Func<SerializedFile, Object, bool> inScope = null)
         {
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var count = 0;
@@ -403,7 +492,7 @@ namespace AssetStudio.Codm
                     continue;
                 foreach (var obj in file.Objects)
                 {
-                    if (!(obj is Texture2D tex))
+                    if (!(obj is Texture2D tex) || (inScope != null && !inScope(file, tex)))
                         continue;
                     var name = UniqueName(usedNames, tex.m_Name, SourceLabel(file));
                     try
