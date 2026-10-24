@@ -230,6 +230,14 @@ folder only holds a few weapons.
 running and rewrote all 96 download-pack parts at 04:46; they also hold the parts open, so the readers
 open files with read-write sharing. Work on the live install should happen with both closed.
 
+## 2026-10-24, handoff
+
+Kilo 141 White Centipede (2140) and its base 1939 unpacked on request; the CLI now resolves a bare
+`--config` name against the repository root from any directory and refuses a config that resolves
+nowhere (it used to fall back to built-in defaults silently, which re-walked the base pack into a
+cache next to the exe). [handoff-1957.md](handoff-1957.md) is the entry point for the next session,
+with the recommended on-demand design for browsing the containers from the GUI.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event

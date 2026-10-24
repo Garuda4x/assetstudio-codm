@@ -172,6 +172,7 @@ animations are the shared packs under `cod_models/weapons/animations/` (load tho
 
 - [docs/codm-install-layout.md](docs/codm-install-layout.md): where things live on disk, the name cipher, pak modules, sound banks
 - [docs/codm-formats.md](docs/codm-formats.md): engine format differences and the animation decoder
+- [docs/handoff-1957.md](docs/handoff-1957.md): **start here for 1.9.57**: state, how to switch versions, how to unpack and export, the recommended next step
 - [docs/codm-containers.md](docs/codm-containers.md): the 1.9.57 QtsVFS containers, format 18 and the normalizer
 - [docs/cli.md](docs/cli.md), [docs/gui.md](docs/gui.md)
 - [docs/progress.md](docs/progress.md): dated log of what was built, what was found, dead ends and open items
