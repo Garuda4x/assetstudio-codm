@@ -351,6 +351,34 @@ named `Rai03_DLQ33_UIi_lod0` and three loose props.
 camo masks) come out 0-255 with the colour under alpha 0 intact. The Black Noir set is BC7 and opaque in
 the game data itself (254-255); Pillow's BC7 decoder on the raw data gives the same pixels bit for bit.
 
+## 2026-10-24, night: one skeleton for a weapon and its attachments (DL Q33 Black Noir, IW4x port)
+
+The user rebuilt the Black Noir in Blender from the per-part casts (nine armatures) and found barrel,
+stock, sight, muzzle and bipod without weights, with no way to tell how the rigs combine.
+
+**Finding: attach points.** The 1P rig carries `<Type>_point` bones under `Bone_RightHand`; every part's
+root sits exactly on one (barrel 0.1264 forward = `Bar_point`, muzzle 0.7201 = barrel + its own
+`Muzzle_point`, stock `Sto_point`, sight `Sight_point`, bipod `Bip_point`, grip `Grip_point`, rail
+`Rai_point`, magazine mesh `Mag_point`). Skinned parts (magazine, grip, rail) carry a copy of the
+weapon's chain and are weighted to main-rig bone names (`Bone_DanJia`, `Bone_RightHand`, `daopian_*`);
+the rail copy matches the main rig exactly, the magazine's and grip's `Bone_RightHand` is zeroed (0.374
+off), irrelevant once rebound. Static parts are MeshRenderers: the Cast exporter wrote them without any
+weights. The ChangeClip curves move `Bip01`, `Bone_RightHand`, `Bone_shuan`/`Bone_Bolt`, `Bone_DanJia`
+(1.4 travel) and the blades; the attach points only hold constant keys.
+
+**Built.** Cast export binds a static mesh 100 % to the bone of its own node (3P/UI parts gain it too).
+`tools/blender/codm_assemble_weapon.py`: main rig = `MainWeapon_..._1P` armature; skinned parts rebound
+by name; static parts weighted to the main-rig bone at their root's rest position (prefix and `_point`
+break ties: `Bar_point` over `Bar_pointqiangtou_root`), parts that hang on another part's socket
+(muzzle) wait for it; sockets the rig lacks (`Muzzle_point`, `MuzzleFlashSocket`, `Center_point`, the
+holo reticle node) are grafted; emptied part armatures removed, materials kept.
+
+**Verified** on a copy of the user's file (Blender 4.0, Cast addon 1.9.4): 82 + 4 bones, all 15 meshes
+on the main rig; ChangeClip imported onto it: every part keeps a constant offset to the bone it should
+follow over the clip (drift 0.00000; rail 0.001 as it is weighted across blades), the magazine leaves and
+returns with `Bone_DanJia`; renders with the camera on `Bone_RightHand` show it. Saved for the user as
+`dql_noirshadow_assembled.blend` next to their file (original untouched).
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event

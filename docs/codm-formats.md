@@ -158,6 +158,29 @@ accordingly and never writes constant keys over dense channels (Equip must start
 - `CodmWeaponHandFollow` (off by default) re-anchors `Bone01` to `b_RightHand` when quantized clips
   under-drive the weapon.
 
+### Weapon attach points (attachments)
+
+The 1P weapon rig carries the attach points under `Bone_RightHand`: `Bar_point` (and
+`Bar_pointqiangtou_root`, same place), `Bip_point` (= `For_point`), `Grip_point`, `Mag_point` (under
+`Bone_DanJia`, the magazine bone, so it follows the reload), `Rai_point`, `Sight_point` (and `Sight`
+with `Center`), `Sto_point`, `Tra_point`, `Pendant_point` (charm), `ShellDropSocket`. Animated weapon
+bones (DL Q33 Black Noir): `Bip01`, `Bone_RightHand`, `Bone_shuan`/`Bone_Bolt` (bolt), `Bone_DanJia`,
+the rail blades `daopian_*`; the points themselves only carry constant keys.
+
+Attachment prefabs come in two kinds, both already in the weapon's frame (cast space, `Bone_RightHand`
+at the origin in bind pose):
+- skinned (magazine, grip, rail): a copy of the weapon's bone chain (`Bip01/Bone_RightHand/Bone_DanJia`,
+  `Rai_point/daopian_*`), the mesh weighted to bones the main rig has; the game maps them by name. The
+  copy's rest pose can differ from the main rig's (the magazine's `Bone_RightHand` is zeroed, 0.374
+  away); only the main rig's rest matters once rebound.
+- static (barrel, muzzle, stock, sight, bipod): a MeshRenderer under a bare root whose position is
+  exactly the attach point (barrel root = `Bar_point`); the muzzle chains on the barrel's own
+  `Muzzle_point`, its `MuzzleFlashSocket` is the flash. Cast exports bind such meshes rigidly to their
+  own node bone.
+
+`tools/blender/codm_assemble_weapon.py` rebinds the skinned parts by name, binds each static part to
+the main-rig bone at its root position and grafts the parts' sockets onto the rig.
+
 ### Camera clips
 
 Every first-person animation has a sibling `<name>_Camera` clip (`..._1P_M_FireLeft_Camera`) that

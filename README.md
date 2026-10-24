@@ -39,6 +39,7 @@ stock loose pak the moment something loads or exports it (see [docs/codm-contain
 | `CodmCli` | `codm.exe`, the command line front end over the same library |
 | `*Native`, `*Wrapper`, `AssetStudio.PInvoke` | upstream native texture decoder and FBX SDK glue |
 | `docs/` | format notes, install layout, CLI and GUI guides, research log |
+| `tools/blender/` | Blender scripts for the exports: `codm_assemble_weapon.py` merges a weapon's attachment armatures into its 1P rig |
 
 Everything targets `net472`.
 
@@ -145,6 +146,13 @@ See [docs/cli.md](docs/cli.md).
 5. With **FX textures**: each linked effect bundle is loaded with its dependencies, the materials its
    renderers use are resolved, and the textures those materials reference are exported next to an
    `objects.txt` listing particle systems, materials and meshes.
+
+Attachments (with **Include components**) export as separate models, already placed in the weapon's
+frame. Skinned parts (magazine, rail, grip) are weighted to bones the main 1P rig has too
+(`Bone_DanJia`, `daopian_*`); static parts (barrel, muzzle, stock, sight, bipod) are bound rigidly to
+their own root, which sits on an attach point of the main rig (`Bar_point`, `Sto_point`...).
+`tools/blender/codm_assemble_weapon.py` puts them on one skeleton so the 1P animations drive the whole
+weapon (see [docs/codm-formats.md](docs/codm-formats.md), weapon attach points).
 
 Third-person prefabs ship without a controller (the game assigns `basic_3p` at runtime), so their
 animations are the shared packs under `cod_models/weapons/animations/` (load those paks directly).

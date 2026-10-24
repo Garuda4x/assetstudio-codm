@@ -232,6 +232,11 @@ namespace AssetStudio
                 }
             }
 
+            // a static mesh (MeshRenderer) moves with the transform it sits on: bind it rigidly to that bone
+            var rigidBone = -1;
+            if (skinToSkeleton == null && !string.IsNullOrEmpty(mesh.Path) && pathToBone.TryGetValue(mesh.Path, out var nodeBone))
+                rigidBone = nodeBone;
+
             for (int s = 0; s < submeshes.Count; s++)
             {
                 var sub = submeshes[s];
@@ -317,6 +322,11 @@ namespace AssetStudio
                             weightValues.Add(bw);
                         }
                     }
+                    else if (rigidBone >= 0)
+                    {
+                        weightBones.Add((uint)rigidBone);
+                        weightValues.Add(1f);
+                    }
                 }
 
                 meshNode.SetVec3Array("vp", positions);
@@ -328,9 +338,9 @@ namespace AssetStudio
                     meshNode.SetVec2Array("u0", uvs);
                 }
 
-                if (hasSkin && weightBones.Count > 0)
+                if (weightBones.Count > 0)
                 {
-                    meshNode.SetByte("mi", 4);
+                    meshNode.SetByte("mi", (byte)(hasSkin ? 4 : 1));
                     meshNode.SetInt32Array("wb", weightBones);
                     meshNode.SetFloatArray("wv", weightValues);
                 }
