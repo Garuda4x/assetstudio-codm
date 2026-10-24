@@ -4,11 +4,12 @@ Private, single-user fork of [Perfare/AssetStudio](https://github.com/Perfare/As
 reads the modified Unity 5.6.4 engine used by **Call of Duty Mobile (CN build)** and exports weapons,
 cosmetics, animations, textures and sounds for porting into other games and mods.
 
-This repository is never published. It is pinned to the **1.9.55 (patch 55)** game files, since
-2026-10-24 archived at `Q:\CODMGameApps_Archive\CN\emulator\Extract\CODM`; the live install at
-`Q:\CODMGameApps` is 1.9.57, whose packed QtsVFS containers are not supported yet (see
-[docs/progress.md](docs/progress.md)). **The game must never be launched, patched or updated from this
-machine; the tooling only reads files.**
+This repository is never published. `codm.config.json` points at the **1.9.55 (patch 55)** game files,
+since 2026-10-24 archived at `Q:\CODMGameApps_Archive\CN\emulator\Extract\CODM`, which the whole
+pipeline reads directly. The live install at `Q:\CODMGameApps` is 1.9.57, whose bundles sit in QtsVFS
+containers: `codm.config.1957.json` and `codm unpack` extract them as loose paks the same pipeline
+reads (see [docs/codm-containers.md](docs/codm-containers.md)). **The game must never be launched,
+patched or updated from this machine; the tooling only reads files.**
 
 ## What it does
 
@@ -25,6 +26,7 @@ machine; the tooling only reads files.**
 | Characters | every skin under `cod_models/avatar` (body, head, hair, first-person arms as separate prefabs), same Cast + textures export |
 | Effects | FX bundles are linked by name; their materials' textures (resolved through the shared texture bundles) and an object list are exported |
 | Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
+| 1.9.57 containers (QtsVFS) | read: download pack, patch pack, base pack; `codm unpack` writes stock bundles the rest of the tooling reads (see [docs/codm-containers.md](docs/codm-containers.md)) |
 
 ## Layout
 
@@ -77,9 +79,9 @@ so Debug and Release builds share it:
 }
 ```
 
-Two configs live at the repository root: `codm.config.json` (the 1.9.55 archive, the one the tooling
-fully supports) and `codm.config.1957.json` (the live 1.9.57 install: sound banks only until the
-container readers exist, its own `cache-1957` and `exports-1957`). The CLI takes `--config <file>`, the
+Two configs live at the repository root: `codm.config.json` (the 1.9.55 archive, loose paks) and
+`codm.config.1957.json` (the live 1.9.57 install: its `PakFolders` are the `unpack-1957` output folders
+of `codm unpack`, plus its own `cache-1957` and `exports-1957`). The CLI takes `--config <file>`, the
 GUI has **CODM > Switch config...** and remembers the choice. Configs for different game versions must
 not share `CacheDir`.
 
@@ -170,6 +172,7 @@ animations are the shared packs under `cod_models/weapons/animations/` (load tho
 
 - [docs/codm-install-layout.md](docs/codm-install-layout.md): where things live on disk, the name cipher, pak modules, sound banks
 - [docs/codm-formats.md](docs/codm-formats.md): engine format differences and the animation decoder
+- [docs/codm-containers.md](docs/codm-containers.md): the 1.9.57 QtsVFS containers, format 18 and the normalizer
 - [docs/cli.md](docs/cli.md), [docs/gui.md](docs/gui.md)
 - [docs/progress.md](docs/progress.md): dated log of what was built, what was found, dead ends and open items
 - [docs/research-log.md](docs/research-log.md): what the animation reverse-engineering probes tested

@@ -28,9 +28,10 @@ namespace AssetStudio.Codm.Vfs
 
     /// <summary>
     /// Reader for the QTSF base pack of CoD Mobile 1.9.57 (StreamingAssets\AssetBundle\base): an index
-    /// (AssetBundle_base.pak), a pack-order file and 2 GB data parts holding one node per 16 KB block
-    /// (node header, block header, zstd frame). The index has no offsets, so a one-time walk over the
-    /// parts assigns each entry its first node; entries follow the pack order inside a part.
+    /// (AssetBundle_base.pak), a pack-order file and 2 GB data parts holding one node per block (node
+    /// header, block header, zstd frame; blocks are 16 KB raw, occasionally shorter). The index has no
+    /// offsets, so a one-time walk over the parts assigns each entry its first node; entries follow the
+    /// pack order inside a part and their index size says where they end.
     /// </summary>
     public sealed class QtsfPack : IDisposable
     {
@@ -232,7 +233,7 @@ namespace AssetStudio.Codm.Vfs
                             }
                             acc += h.RawSize;
                             pos += h.NodeSize;
-                            if (h.RawSize < BlockSize || acc >= e.Size)
+                            if (acc >= e.Size) // blocks shorter than 16 KB can occur mid-entry; the index size is the stop condition
                                 break;
                         }
                         e.Offset = start;
@@ -377,7 +378,6 @@ namespace AssetStudio.Codm.Vfs
                         }
                         acc += raw;
                         pos += h.NodeSize;
-                        if (h.RawSize < BlockSize) break;
                     }
                     if (acc != dst.Length)
                         Array.Resize(ref dst, acc);

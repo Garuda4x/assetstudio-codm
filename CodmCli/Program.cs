@@ -124,7 +124,7 @@ namespace CodmCli
             Console.WriteLine("  typetree <pak>                 report whether the bundle carries type trees");
             Console.WriteLine("  vfs                            1.9.57 containers found for the config: packs, entries, chunks, base offset cache");
             Console.WriteLine("  vfs-index [--rebuild]          walk the base pack once and cache where each entry starts (minutes)");
-            Console.WriteLine("  unpack <text...> [--out d]     extract container entries whose decoded name contains the text as loose paks (format 18 rewritten to stock) [--list] [--raw] [--chunks] [--max n]");
+            Console.WriteLine("  unpack <text...> [--out d]     extract container entries whose decoded name contains the text as loose paks (format 18 rewritten to stock) [--list] [--raw] [--chunks] [--max n] [--source puffer|extract|streaming]");
             Console.WriteLine();
             Console.WriteLine("Global (before or after the command): --config <file>  --diag");
         }
@@ -174,12 +174,14 @@ namespace CodmCli
         {
             if (o.Positional.Count == 0)
             {
-                Console.Error.WriteLine("usage: codm unpack <text...> [--out dir] [--list] [--raw] [--chunks] [--max n]");
+                Console.Error.WriteLine("usage: codm unpack <text...> [--out dir] [--list] [--raw] [--chunks] [--max n] [--source puffer|extract|streaming]");
                 return 1;
             }
             var v = EnsureVfs();
             var includeChunks = o.Has("chunks");
-            var matches = o.Positional.SelectMany(q => v.Find(q, includeChunks)).Distinct().ToList();
+            var source = o.Get("source");
+            var matches = o.Positional.SelectMany(q => v.Find(q, includeChunks)).Distinct()
+                .Where(e => source == null || string.Equals(e.SourceLabel, source, StringComparison.OrdinalIgnoreCase)).ToList();
             var max = o.GetInt("max", int.MaxValue);
             if (matches.Count > max) matches = matches.Take(max).ToList();
             if (o.Has("list") || matches.Count == 0)
@@ -1054,7 +1056,7 @@ namespace CodmCli
 
         private static readonly HashSet<string> ValueKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "config", "tsv", "out", "csv", "kind", "max", "top",
+            "config", "tsv", "out", "csv", "kind", "max", "top", "source",
         };
 
         /// <summary>Index of the command word: the first argument that is neither an option nor the value of a value-taking option.</summary>

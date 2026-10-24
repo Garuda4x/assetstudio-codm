@@ -33,6 +33,9 @@ or after the command: `--config <file>` (another config, e.g. `codm --config cod
 | `codm scan <pak\|dir> [-v] [--csv file]` | bundle metadata without full deserialization: CABs, object types, names, container paths |
 | `codm mono <pak> [--strings]` | MonoScript / MonoBehaviour listing and printable strings in the behaviour blobs |
 | `codm typetree <pak> [--max n]` | whether the bundle carries type trees (CoD Mobile: no) |
+| `codm vfs` | 1.9.57 containers found under the game root: packs, entries, chunks, offset cache state |
+| `codm vfs-index [--rebuild]` | walk the base pack once and cache where each entry starts (about 7 minutes) |
+| `codm unpack <text...> [--list] [--source s] [--raw] [--chunks] [--max n] [--out d]` | extract container entries whose decoded name contains the text as loose paks, format 18 rewritten to stock; see [codm-containers.md](codm-containers.md) |
 
 ## Examples
 

@@ -30,7 +30,8 @@ The chunks are pack entries named `<md5>.cpak` (base pack), `dynamic/split/<md5>
 fetch its chunks, and either feed the reader a chunk resolver or rewrite the file into a stock
 version-17 layout with the external payloads appended to the data section (the planned
 "normalizer", which also lets `codm unpack` produce bundles the unchanged pipeline reads).
-`SerializedFile` already skips the string list (`codmSplitRefs`); the object table is not handled yet.
+`SerializedFile` only skips the string list (`codmSplitRefs`); `BundleNormalizer` in `AssetStudio.Codm/Vfs`
+does the rewrite, see [codm-containers.md](codm-containers.md).
 
 ## Texture2D
 

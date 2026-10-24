@@ -201,6 +201,31 @@ walk per part builds the offset cache.
 16-byte offset; the second tuple in oversized block tables as location (the first tuple is right); md5 /
 sha1 / sha256 of 25 spellings of the old pak names as `.cpak` names (chunks are content pieces).
 
+## 2026-10-24, night: container layer, first 1.9.57 bundles through the pipeline
+
+**Built.** `AssetStudio.Codm/Vfs`: `QtsPack` (download and patch packs), `QtsfPack` (base pack with the
+offset walk cache), `CodmVfs` (all stores, chunk lookup), `BundleNormalizer` (format 18 -> stock 17
+bundle), `Lz4Block`, `ZstdFrame` (ZstdSharp.Port from NuGet). CLI: `codm vfs`, `codm vfs-index`,
+`codm unpack`. Config: `VfsFolders`, `UnpackRoot`, `./`-relative `PakFolders`; `codm.config.1957.json`
+reads the `unpack-1957` folders. `PakName` understands the `module!ver!forcedownload!path` prefix.
+Reference: [codm-containers.md](codm-containers.md).
+
+**Verified.** 32 Locus bundles (railgun 2537 and base 104) and 27 Vector / Alias bundles unpacked from
+the download pack with their external payloads inlined (up to 193 of 401 objects from 8 chunks in one
+bundle); `codm scan` reads the results (clips, textures, meshes, Avatar, SkinnedMeshRenderer) and
+`codm weapons` / `codm weapon 2537` build the catalog from them with the base chain intact. The base
+pack walk located all 148 592 entries in about 7 minutes.
+
+**Found.** Entries in a Qts pack are found from the block table's `Q` (global logical page) through the
+part's page map; the record timestamp is not the part. Blocks shorter than 16 KB occur in the middle of
+base pack entries (114 of 148 592), so an entry ends at its index size, not at the first short block.
+Module bundles are stored whole; their chunks live in the same pack. The base index records whose id
+starts with the byte `_` must not be mistaken for the `QTSF_PACKAGE` marker.
+
+**Observed.** While this was built the game itself (`CODM`, started 02:14) and `CODMLauncher` were
+running and rewrote all 96 download-pack parts at 04:46; they also hold the parts open, so the readers
+open files with read-write sharing. Work on the live install should happen with both closed.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
@@ -210,4 +235,4 @@ sha1 / sha256 of 25 spellings of the old pak names as `.cpak` names (chunks are 
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.
 - Optional: embedded textured mesh preview in the browser; standalone GUI.
-- 1.9.57: Qts reader (index + LZ4 + page map, format known), base-pack node walk for entry offsets, format-18 normalizer (external payloads from chunks), `codm unpack`, then container-aware catalog.
+- 1.9.57: full weapon export from unpacked bundles (shared animation packs from the base pack), GUI front end for unpack, then a container-aware pak index so unpacking becomes optional; the 375-entry table in base parts; the `.cpak` chunk sizes vs. the 5 base entries stored one block short in the first walk (now accounted for).
