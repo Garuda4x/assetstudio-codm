@@ -33,8 +33,19 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 - **Sound class of this family**: the class that picks the `wpn_<class>` bank; shown as map / seed /
   kind. Change it and **Save class** to write `weapon-classes.json`.
 - **Export weapon...**: choose a folder; `CodmExportService` writes `<folder>/<weapon>/` with the
-  options ticked above the list (models as Cast, textures, sounds with wav conversion, class banks
-  only when ticked since they hold a whole weapon class, FX textures, base weapon paks, component paks). Progress and warnings show in the log at the bottom.
+  options ticked above the list:
+  - **Models (cast)**: one Cast per prefab with its animations; `_Camera` clips are merged onto a
+    `Camera` bone of the first-person rig; animation events become Cast notetracks and
+    `anims/notetracks.txt`.
+  - **Textures**, **Sounds**, **wem -> wav** (needs `VgmstreamPath`).
+  - **Class banks too**: also dump `wpn_<class>` and the banks the weapon's banks borrow from (a whole
+    weapon class, hundreds of wems). Off by default.
+  - **Bank variants**: also dump the lettered banks (`247a`, `247c`...), most likely other skins'
+    sets. Off by default; `<id>` and `<id>p3` are always taken.
+  - **FX textures**, **Include base weapon**, **Include components**, **Resolve dependencies**.
+
+  Progress and warnings show in the log at the bottom. HQ bank copies (`Windows_HQ`) are used when the
+  game shipped one; everything else is 22 kHz source material.
 - **Preview mesh**: loads the checked paks (with dependencies when ticked) into the main window and
   selects the most interesting mesh (first-person prefab first, then the biggest LOD0) in the Asset List,
   so the Preview tab shows it.

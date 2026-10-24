@@ -119,10 +119,12 @@ WeaponPartCompose  WeaponBlueprintConf  WeaponSocketConfig  LegendaryWeaponEffec
 MythicWeaponLevelConf  ItemResource  ItemInventory  PropertyModifyDesc  SpecialItemResource
 ```
 
-The contents are encrypted (high entropy; a 4-byte periodic pattern suggests a short XOR key over an
-int32 table, but the key and framing are unknown). Decrypting them would need static analysis of
-`CODM.exe`. They are the authoritative weapon -> model / sound / FX mapping; until then the tooling
-derives relations from names.
+The contents are encrypted. It is not a repeating XOR (per-position statistics and a brute force over
+4-byte keys found nothing; the high 16 bits of each dword stay near-constant per file, so a short-key
+stream cipher is likely). Decrypting them needs static analysis of `CODM.exe`, whose IL2CPP metadata
+is itself encrypted (no Wwise names or C# strings among the exe's plain strings). They are the
+authoritative weapon -> model / sound / FX mapping; until then the tooling derives relations from
+names. See [progress.md](progress.md) for what was tried.
 
 ## Wwise audio
 

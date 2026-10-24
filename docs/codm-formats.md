@@ -34,6 +34,15 @@ DXT1, DXT5 and BC7 are confirmed.
 `Mesh.m_BindPose`, weights from `Mesh.m_Skin`, the skeleton from the `Avatar`
 (`m_AvatarSkeleton`, `m_DefaultPose`, bone path CRC32 lookup).
 
+Effect meshes use vertex channel formats from the Unity 2017 enum (`UNorm16 = 5` and up) although the
+file says 5.6; `MeshHelper.ToVertexFormat` falls through to the 2017 mapping for values the 5.x enum
+does not have.
+
+## ParticleSystemRenderer
+
+Stock AssetStudio does not parse it. A minimal `ParticleSystemRenderer : Renderer` reads only the
+renderer base so the materials (and through them the textures) of an effect can be followed.
+
 ## AnimatorController / AnimatorOverrideController
 
 Weapon bundles ship `AnimatorOverrideController`s whose `m_Clips[].m_OverrideClip` point at the

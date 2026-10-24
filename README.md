@@ -150,10 +150,17 @@ animations are the shared packs under `cod_models/weapons/animations/` (load tho
   `play_weapon_<class>_raise_3p`); events that use other words stay listed by id, with their wems
   grouped under that id. Switch values that pick a weapon inside the class banks are not named yet.
 - Effects cannot be rebuilt as particle systems; the export gives their textures and object names.
+- Melee weapons without a sound set of their own export the whole `wpn_melee` bank; the animation
+  events say which trigger fires when, but pairing trigger to wem is by ear until the bank's event
+  names are recovered.
+- Characters: the `_1P` arms prefab exports without a mesh (assigned at runtime from a shared asset
+  that has not been located).
+- Sound is 22 kHz Vorbis in the shipped banks; only 79 banks have a `Windows_HQ` copy.
 
 ## Documentation
 
 - [docs/codm-install-layout.md](docs/codm-install-layout.md): where things live on disk, the name cipher, pak modules, sound banks
 - [docs/codm-formats.md](docs/codm-formats.md): engine format differences and the animation decoder
 - [docs/cli.md](docs/cli.md), [docs/gui.md](docs/gui.md)
+- [docs/progress.md](docs/progress.md): dated log of what was built, what was found, dead ends and open items
 - [docs/research-log.md](docs/research-log.md): what the animation reverse-engineering probes tested
