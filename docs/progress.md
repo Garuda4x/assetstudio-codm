@@ -410,6 +410,18 @@ away from the rest: a retarget onto IW4 `tag_camera` would flip on every reload.
 the first rotation key of the merged clips. `retarget_codm_to_iw4.py` (iw4xTools) assumed rest + 180 deg
 as the neutral, which double-counts with new exports.
 
+## 2026-10-24, late night: IW4 pilot retarget set up
+
+Re-exported the DL Q33 Black Noir with the camera (CLI, into the user's `export` folder; every export
+root is now git-ignored by `export*/`). In the iw4xTools CODM converter, `Weapon\codm_weapon_retarget_setup.py`
+writes the anim_utils pair file (54 World pairs: torso, gun controller and gun bones, IK controls,
+twists, fingers, camera) and a retarget scene at a built sync pose; the old pipeline detects which
+Camera rest convention a rig uses. Lesson: CODM exports each weapon's arms in its own default pose
+(DL Q33: 61 cm and up to 160 deg from the calibration weapon's rest), so a sync captured with both rigs
+at rest keeps that offset; solving the CODM rest once with the calibrated deltas fixes it. Headless bake
+through anim_utils (Idle, ChangeClip, FireBolt, Inspection): gun within 0.0001, wrists within 0.003 of
+the CODM hands on every frame.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
