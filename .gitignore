@@ -339,12 +339,11 @@ ASALocalRun/
 # BeatPulse healthcheck temp database
 healthchecksdb
 
-# CODM fork: scratch probes and export output
+# CODM fork: scratch probes and export output (every export root: export/, exports/, exports-1957/...)
 _temp/
-exports/
+export*/
 
 # derived indexes
 cache/
 cache-*/
-exports-*/
 unpack*/
