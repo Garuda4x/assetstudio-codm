@@ -45,7 +45,9 @@ attachment index are built in the background: the first time on 1.9.57 that read
   options ticked above the list:
   - **Models (cast)**: one Cast per prefab with its animations; `_Camera` clips are merged onto a
     `Camera` bone of the first-person rig; animation events become Cast notetracks and
-    `anims/notetracks.txt`.
+    `anims/notetracks.txt`. Each mesh gets its material (found by name, attachments by UV layout)
+    with the colour map, written to `textures/` and referenced from the Cast file, so the model
+    imports textured (Blender Cast addon). Normal and metal/roughness maps are not linked.
   - **Textures**, **Sounds**, **wem -> wav** (needs `VgmstreamPath`).
   - **Class banks too**: also dump `wpn_<class>` and the banks the weapon's banks borrow from (a whole
     weapon class, hundreds of wems). Off by default.

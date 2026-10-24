@@ -22,10 +22,14 @@ namespace AssetStudio
         private Dictionary<Texture2D, string> textureNameDictionary = new Dictionary<Texture2D, string>();
         private Dictionary<Transform, ImportedFrame> transformDictionary = new Dictionary<Transform, ImportedFrame>();
         private Dictionary<uint, string> morphChannelNames = new Dictionary<uint, string>();
+        /// <summary>Material for (mesh, submesh index) when the renderer's own reference does not resolve.</summary>
+        private Func<Mesh, int, ImportedMaterial> materialFallback;
 
-        public ModelConverter(GameObject m_GameObject, ImageFormat imageFormat, AnimationClip[] animationList = null)
+        public ModelConverter(GameObject m_GameObject, ImageFormat imageFormat, AnimationClip[] animationList = null,
+            Func<Mesh, int, ImportedMaterial> materialFallback = null)
         {
             this.imageFormat = imageFormat;
+            this.materialFallback = materialFallback;
             if (m_GameObject.m_Animator != null)
             {
                 InitWithAnimator(m_GameObject.m_Animator);
@@ -79,9 +83,11 @@ namespace AssetStudio
             ConvertAnimations();
         }
 
-        public ModelConverter(Animator m_Animator, ImageFormat imageFormat, AnimationClip[] animationList = null)
+        public ModelConverter(Animator m_Animator, ImageFormat imageFormat, AnimationClip[] animationList = null,
+            Func<Mesh, int, ImportedMaterial> materialFallback = null)
         {
             this.imageFormat = imageFormat;
+            this.materialFallback = materialFallback;
             InitWithAnimator(m_Animator);
             if (animationList == null)
             {
@@ -527,6 +533,16 @@ namespace AssetStudio
                     }
                 }
                 ImportedMaterial iMat = ConvertMaterial(mat);
+                if (mat == null && materialFallback != null)
+                {
+                    var fallback = materialFallback(mesh, i);
+                    if (fallback != null)
+                    {
+                        if (ImportedHelpers.FindMaterial(fallback.Name, MaterialList) == null)
+                            MaterialList.Add(fallback);
+                        iMat = fallback;
+                    }
+                }
                 iSubmesh.Material = iMat.Name;
                 iSubmesh.BaseVertex = (int)mesh.m_SubMeshes[i].firstVertex;
 

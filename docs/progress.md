@@ -319,6 +319,34 @@ asset and its preload range) are exported, models and textures alike; paks linke
 **Not this bug.** The 1.9.55 Beam Saber (`meleeweapon_59823`) 1P model has no mesh either, but there
 no copy has one: its renderer's mesh reference (path id `501 << 32`) resolves to nothing.
 
+## 2026-10-24, late: materials and colour maps on the models
+
+No exported Cast had ever carried a material: CoD Mobile renderers hold no usable material reference
+(empty, or path id 0 / `1 << 32` of an animation pack), because the game assigns skin and camo materials
+at runtime; the base DL Q33 bundle holds one material per camo. No MonoBehaviour names them either
+(the component bundles only carry `AssetRef`, which lists meshes). Materials are matched by name
+instead, part + skin (`Wea01_DLQ33BlackNoirBLP_1P` -> `Wea01_DLQ33BlackNoirBLP_mtl`, `DLQ33Black_1P` ->
+`wea_DLQ33Black_mtl`, `Wea01_DL_Q33_UI_lod0` -> `wea_DLQ33_mtl`, second submesh -> `..._mtl_SightPupil`).
+
+**Finding: attachments share the skin's sheets.** The Black Noir ships `Wea01`, `Rai01`, `Sig01`, `Sto01`
+and `Glass` sheets but has barrel, magazine, muzzle, grip and bipod meshes too. Rendered against every
+sheet, the magazine is only coherent on `Rai01` (fins, copper round) and is a patchwork on `Wea01`. Parts
+sharing a sheet are packed into separate regions, so the sheet whose own mesh covers none of the part's
+UV area is the one: magazine `Rai01` (0 % overlap, `Wea01` 48 %), barrel, muzzle and grip `Wea01` (0 to
+2 %). Where no sheet is clearly free (over 10 %, the Black Noir bipod), the skin's `wea` sheet.
+
+**Built.** `MaterialMatcher` (name match, then UV layout, then `wea`); `ModelConverter` takes a material
+fallback for renderers whose reference does not resolve; Cast materials reference a colour map already
+on disk relatively (`../../textures/<name>.png`), written once per texture. Only the colour map
+(`_MainTex`, `_A`) is linked; the normal map is packed (`_BumpMapPakced`) and metal/roughness is `_M`.
+`--no-materials` in the CLI.
+
+**Verified** in Blender 4.1 with the Cast addon (headless import, unlit render of the colour map): the
+Black Noir 1P/UI body, magazine, grip, the base DL Q33 rail, DL Q33 Black stock, scope and body, and the
+1.9.55 Locus railgun all import textured with the details in place. Full DL Q33 Black Noir export: 141
+models, 11 colour maps, no material for the `_H` holo reticle meshes, `SightPupilCircle_Mesh`, a mesh
+named `Rai03_DLQ33_UIi_lod0` and three loose props.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
@@ -326,6 +354,9 @@ no copy has one: its renderer's mesh reference (path id `501 << 32`) resolves to
 - Source of the characters' first-person arms mesh, and of the Beam Saber's (`meleeweapon_59823`).
 - Dependency resolution with components included follows the other weapons' attachments in the
   shared buckets too (60-pak limit reached for the DL Q33); scope it to the exported objects.
+- Materials: normal (`_BumpMapPakced`, channel layout unknown) and metal/roughness (`_M`) maps; camo
+  materials as alternatives; characters (untested with the matcher); the Black Noir bipod's sheet
+  (no sheet clearly free, falls back to `Wea01`).
 - Decrypt `DataTableBytes` by static analysis of `CODM.exe` (the real manifest: `WeaponAsset`,
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.

@@ -368,6 +368,15 @@ namespace AssetStudio
             var diffuse = mat.Textures.FirstOrDefault(t => t.Dest == 0);
             if (diffuse == null) return;
 
+            // a texture already written elsewhere (shared texture folder): reference it, relative to the model
+            if (Path.IsPathRooted(diffuse.Name) && File.Exists(diffuse.Name))
+            {
+                var fileNode = matNode.AddChild(CastIds.File);
+                fileNode.SetString("p", RelativePath(directory, diffuse.Name));
+                matNode.SetInt64("diffuse", fileNode.Hash);
+                return;
+            }
+
             var tex = imported.TextureList.FirstOrDefault(t => t.Name == diffuse.Name);
             if (tex?.Data == null || tex.Data.Length == 0) return;
 
@@ -388,6 +397,19 @@ namespace AssetStudio
             {
                 Logger.Warning($"[Cast] Failed to write texture '{tex.Name}': {ex.Message}");
             }
+        }
+
+        /// <summary>Forward-slash path from a directory to a file; absolute when they share no root.</summary>
+        private static string RelativePath(string fromDirectory, string toFile)
+        {
+            var from = Path.GetFullPath(fromDirectory).TrimEnd('\\', '/').Split('\\', '/');
+            var to = Path.GetFullPath(toFile).Split('\\', '/');
+            var common = 0;
+            while (common < from.Length && common < to.Length - 1 && string.Equals(from[common], to[common], StringComparison.OrdinalIgnoreCase))
+                common++;
+            if (common == 0)
+                return Path.GetFullPath(toFile);
+            return string.Join("/", Enumerable.Repeat("..", from.Length - common).Concat(to.Skip(common)));
         }
 
         private static void WriteTranslationCurves(CastNode animation, string boneName,

@@ -14,7 +14,7 @@ or after the command: `--config <file>` (another config, e.g. `codm --config cod
 | `codm search <text> [--max n]` | paks whose decoded name or raw file name contains the text |
 | `codm weapons [filter] [--kind main\|melee\|throw\|assi\|special] [--base] [--no-banks]` | weapon table: paks, base, skins, fx, own banks, class banks |
 | `codm weapon <id\|folder\|name>` | one weapon: paks, base chain paks, components, effects, sound banks, class banks |
-| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-sounds] [--no-wav] [--flat-sounds] [--class-banks] [--bank-variants] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps`; sounds grouped per event unless `--flat-sounds`; only the weapon's own banks unless `--class-banks`, only `<id>` and `<id>p3` unless `--bank-variants`; `--components` adds the attachment paks, of which only the attachments linked to the weapon (by container path) are exported |
+| `codm export <id\|folder> [--out dir] [--no-models] [--no-textures] [--no-materials] [--no-sounds] [--no-wav] [--flat-sounds] [--class-banks] [--bank-variants] [--fx] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]` | export to `<out>/<weapon folder>/`; dependencies are resolved unless `--no-deps`; sounds grouped per event unless `--flat-sounds`; only the weapon's own banks unless `--class-banks`, only `<id>` and `<id>p3` unless `--bank-variants`; `--components` adds the attachment paks, of which only the attachments linked to the weapon (by container path) are exported; models carry their material and colour map (`textures/`) unless `--no-materials` |
 | `codm anims <weapon> [--no-deps]` | per Animator prefab: its controller, how many clips resolve and in which bundle the missing ones live |
 | `codm cabindex [--rebuild]` | build or refresh the CAB -> pak index (`cache/cab-index.json`) |
 | `codm deps <pak...>` | external bundles a pak references and which paks provide them |
@@ -78,7 +78,7 @@ sounds (89):
 <out>/<weapon folder>/
   manifest.json          paks loaded, models, textures, banks, warnings
   models/<prefab>/       <prefab>.cast + anims/*.cast   (one per Animator; "<name> (module)" when two bundles ship the same prefab)
-  textures/*.png
+  textures/*.png         every texture of the weapon's paks; the casts reference the colour maps here
   models/<prefab>/anims/notetracks.txt   animation events per clip: time, function, Wwise ids, guessed bank events
   sounds/<bank>/<event>/*.wem   (+ .wav when vgmstream is configured; events.txt maps events to wems)
   sounds/_from_animation_events/<bank>/<event>/   wems of Wwise events the clips reference by id

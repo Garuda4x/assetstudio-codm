@@ -112,7 +112,7 @@ namespace CodmCli
             Console.WriteLine("  search <text>                  find paks by decoded name");
             Console.WriteLine("  weapons [filter] [--kind k]    list weapons (filter matches folder; --kind main|melee|throw|assi|special; --base)");
             Console.WriteLine("  weapon <id|folder|name>        show the paks, base weapon, skins, components, fx and banks of a weapon");
-            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--class-banks] [--bank-variants] [--no-models] [--no-textures] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
+            Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--class-banks] [--bank-variants] [--no-models] [--no-textures] [--no-materials] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
             Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
             Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
             Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids (--hex dumps small blobs)");
@@ -544,6 +544,7 @@ namespace CodmCli
                 BankVariants = o.Has("bank-variants"),
                 MaxDependencyPaks = o.GetInt("max-deps", 60),
                 AllPrefabCopies = o.Has("all-copies"),
+                Materials = !o.Has("no-materials"),
             };
             if (string.IsNullOrEmpty(cfg.VgmstreamPath))
                 cfg.VgmstreamPath = WemTools.FindVgmstream() ?? "";
@@ -854,6 +855,7 @@ namespace CodmCli
                 ResolveDependencies = !o.Has("no-deps"),
                 MaxDependencyPaks = o.GetInt("max-deps", 60),
                 AllPrefabCopies = o.Has("all-copies"),
+                Materials = !o.Has("no-materials"),
             };
             var svc = new CodmExportService(cfg, pakIndex, null, () => EnsureCabIndex());
             var report = svc.ExportCharacter(c, outRoot, options, Console.WriteLine);

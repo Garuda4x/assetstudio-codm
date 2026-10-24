@@ -49,6 +49,18 @@ DXT1, DXT5 and BC7 are confirmed.
 
 - `Renderer`: `m_SortingLayer` (SInt16, stock 5.6+) is **absent**.
 - `SkinnedMeshRenderer`: `m_Quality` is absent (read only for versions below 5.4).
+- `m_Materials` never resolves: the slots are empty or point at path id 0 (or `1 << 32`) of an unrelated
+  bundle (an animation pack). The game assigns skin and camo materials at runtime (the base DL Q33
+  bundle holds one material per camo). A first-person prefab's SkinnedMeshRenderer can leave `m_Mesh`
+  empty too; its `AssetRef` MonoBehaviour names the mesh, and the imported `.fbx` copy next to the
+  prefab carries it.
+- Materials follow part + skin names: mesh `Wea01_DLQ33BlackNoirBLP_1P` -> `Wea01_DLQ33BlackNoirBLP_mtl`,
+  `DLQ33Black_1P` -> `wea_DLQ33Black_mtl`, `Wea01_DL_Q33_UI_lod0` -> `wea_DLQ33_mtl`; variants for further
+  submeshes (`..._mtl_SightPupil`). `_MainTex` is the colour map (`_A`), `_BumpMapPakced` a packed normal
+  map, `_MetallicRoughnessMap` (`_M`), `_EmissionMap` (`_E`). Attachments without a material of their
+  own share a sheet of the skin, packed into a free region of it: the Black Noir magazine is on the
+  `Rai01` sheet, barrel, muzzle and grip on `Wea01`. No MonoBehaviour names the sheet (component
+  bundles only carry `AssetRef`), so the export finds it by UV layout (`MaterialMatcher`).
 
 ## Mesh
 
@@ -181,6 +193,8 @@ directly referenced Wwise events land in `sounds/_from_animation_events/`.
 
 - `.cast` (dtzxporter Cast) is the primary model and animation format: Z-up, model-space vertices,
   skeleton, materials with diffuse texture reference, one `.cast` per animation under `anims/`.
+  CODM models get their materials from `MaterialMatcher` (see Renderer above); the colour map is written
+  once to `textures/` and referenced as `../../textures/<name>.png`.
   `CastExporter.SkipEmptyAnimations` drops clips that bind nothing on the chosen skeleton.
 - GLB (SharpGLTF, skinned, PBR, pruned skeleton) and FBX (stock ModelExporter) are opt-in in Export Options.
 - `CodmExportService` exports one Cast model per `Animator` with the clips its override controller

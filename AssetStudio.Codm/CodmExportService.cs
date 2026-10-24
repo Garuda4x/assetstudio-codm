@@ -35,6 +35,8 @@ namespace AssetStudio.Codm
         public int MaxDependencyPaks { get; set; } = 60;
         /// <summary>Export every copy of a prefab that appears in several bundles instead of the first one.</summary>
         public bool AllPrefabCopies { get; set; } = false;
+        /// <summary>Give the models their materials (matched by name) with the colour map written to textures/.</summary>
+        public bool Materials { get; set; } = true;
     }
 
     public sealed class WeaponExportReport
@@ -209,7 +211,8 @@ namespace AssetStudio.Codm
                         log($"[Export] {componentScope.Count} component pak(s) shared with other weapons: only this weapon's attachments are exported from them");
                     }
                     if (o.Models)
-                        ExportModels(am, Path.Combine(dir, "models"), report, log, weaponFiles, o.AllPrefabCopies, inScope);
+                        ExportModels(am, Path.Combine(dir, "models"), report, log, weaponFiles, o.AllPrefabCopies, inScope,
+                            o.Materials ? Path.Combine(dir, "textures") : null);
                     if (o.Textures)
                         ExportTextures(am, Path.Combine(dir, "textures"), report, log, weaponFiles, inScope);
                 }
@@ -229,11 +232,13 @@ namespace AssetStudio.Codm
         private List<Wwise.WwiseBankInfo> currentBanks;
 
         public void ExportModels(AssetsManager am, string dir, WeaponExportReport report, Action<string> log, HashSet<string> ownBundles = null, bool allPrefabCopies = false,
-            Func<SerializedFile, Object, bool> inScope = null)
+            Func<SerializedFile, Object, bool> inScope = null, string materialTextureDir = null)
         {
             var exportedRoots = new HashSet<GameObject>();
             var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             CastExporter.SkipEmptyAnimations = true;
+            var materials = materialTextureDir != null ? new MaterialMatcher(am, materialTextureDir, cfg.ImageFormat) : null;
+            Func<Mesh, int, ImportedMaterial> materialFallback = materials != null ? materials.Resolve : (Func<Mesh, int, ImportedMaterial>)null;
 
             bool IsOwn(SerializedFile f) => ownBundles == null || ownBundles.Contains(f.originalPath ?? f.fullName ?? "");
             bool InScope(SerializedFile f, Object obj) => inScope == null || inScope(f, obj);
@@ -297,7 +302,7 @@ namespace AssetStudio.Codm
                     var name = UniqueName(usedNames, go.m_Name, SourceLabel(file));
                     try
                     {
-                        var conv = new ModelConverter(animator, cfg.ImageFormat, clips.Length > 0 ? clips : null);
+                        var conv = new ModelConverter(animator, cfg.ImageFormat, clips.Length > 0 ? clips : null, materialFallback);
                         CameraTrackMerger.Merge(conv, log);
                         var modelDir = Path.Combine(dir, name);
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
@@ -344,7 +349,7 @@ namespace AssetStudio.Codm
                     var name = UniqueName(usedNames, go.m_Name, SourceLabel(file));
                     try
                     {
-                        var conv = new ModelConverter(go, cfg.ImageFormat);
+                        var conv = new ModelConverter(go, cfg.ImageFormat, null, materialFallback);
                         var modelDir = Path.Combine(dir, name);
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
                         report.Models.Add(modelDir);
@@ -359,6 +364,14 @@ namespace AssetStudio.Codm
             }
             if (report.SkippedPrefabCopies.Count > 0)
                 log($"[Export] {report.SkippedPrefabCopies.Count} duplicate prefab copies skipped (other module copies of the same prefab)");
+            if (materials != null)
+            {
+                log($"[Materials] {materials.WrittenTextures.Count()} colour map(s) referenced by the models");
+                if (materials.LayoutChoices.Count > 0)
+                    log($"[Materials] sheet by UV layout: {string.Join(", ", materials.LayoutChoices.Select(c => c.Key + " -> " + c.Value))}");
+                if (materials.Unmatched.Count > 0)
+                    log($"[Materials] no material found for {materials.Unmatched.Count} mesh(es): {string.Join(", ", materials.Unmatched.Take(12))}{(materials.Unmatched.Count > 12 ? ", ..." : "")}");
+            }
         }
 
         /// <summary>
