@@ -15,7 +15,9 @@ namespace AssetStudioGUI
     /// <summary>
     /// CODM weapon browser: decoded pak names grouped per weapon (skin paks, base weapon, components,
     /// effects, sound banks). Loads the chosen paks into the main window or exports a weapon through
-    /// <see cref="CodmExportService"/>, the same code the command line uses.
+    /// <see cref="CodmExportService"/>, the same code the command line uses. On a 1.9.57 install every
+    /// bundle of the game containers is listed; grey rows are not unpacked yet and are written to the
+    /// unpack folder when loaded, exported or unpacked explicitly.
     /// </summary>
     internal sealed class CodmBrowserForm : Form
     {
@@ -32,7 +34,7 @@ namespace AssetStudioGUI
         private ListView assetList;
         private CheckBox optModels, optTextures, optSounds, optWav, optClassBanks, optBankVariants, optFx, optBase, optComponents, optDeps;
         private ComboBox classCombo;
-        private Button btnLoad, btnAdd, btnPreview, btnExport, btnOpenFolder, btnCopy;
+        private Button btnLoad, btnAdd, btnPreview, btnExport, btnUnpack, btnOpenFolder, btnCopy;
         private WeaponEntry current;
         private CharacterEntry currentCharacter;
 
@@ -172,7 +174,7 @@ namespace AssetStudioGUI
             {
                 var entry = assetList.SelectedItems.Count > 0 ? assetList.SelectedItems[0].Tag as PakEntry : null;
                 if (entry != null)
-                    await LoadIntoMain(new[] { entry.FullPath }, false);
+                    await LoadIntoMain(new[] { entry }, false);
             };
 
             var options = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 54, Padding = new Padding(4, 6, 4, 0) };
@@ -203,9 +205,10 @@ namespace AssetStudioGUI
             btnAdd = MakeButton("Add checked", async (s, e) => await LoadIntoMain(CheckedPaks(), true));
             btnPreview = MakeButton("Preview mesh", async (s, e) => await PreviewChecked());
             btnExport = MakeButton("Export weapon...", async (s, e) => await ExportCurrent());
-            btnOpenFolder = MakeButton("Show pak in Explorer", (s, e) => ShowInExplorer());
+            btnUnpack = MakeButton("Unpack checked", async (s, e) => await UnpackChecked(assetList));
+            btnOpenFolder = MakeButton("Show pak in Explorer", async (s, e) => await ShowInExplorer(assetList));
             btnCopy = MakeButton("Copy names", (s, e) => CopyNames());
-            buttons.Controls.AddRange(new Control[] { btnLoad, btnAdd, btnPreview, btnExport, btnOpenFolder, btnCopy });
+            buttons.Controls.AddRange(new Control[] { btnLoad, btnAdd, btnPreview, btnExport, btnUnpack, btnOpenFolder, btnCopy });
 
             split.Panel2.Controls.Add(assetList);
             split.Panel2.Controls.Add(classRow);
@@ -237,18 +240,15 @@ namespace AssetStudioGUI
             {
                 var entry = pakList.SelectedItems.Count > 0 ? pakList.SelectedItems[0].Tag as PakEntry : null;
                 if (entry != null)
-                    await LoadIntoMain(new[] { entry.FullPath }, false);
+                    await LoadIntoMain(new[] { entry }, false);
             };
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(4) };
             buttons.Controls.Add(MakeButton("Load checked (replace)", async (s, e) => await LoadIntoMain(CheckedPaks(pakList), false)));
             buttons.Controls.Add(MakeButton("Add checked", async (s, e) => await LoadIntoMain(CheckedPaks(pakList), true)));
-            buttons.Controls.Add(MakeButton("Show in Explorer", (s, e) =>
-            {
-                var entry = pakList.SelectedItems.Count > 0 ? pakList.SelectedItems[0].Tag as PakEntry : null;
-                if (entry != null) SelectInExplorer(entry.FullPath);
-            }));
-            var hint = new Label { AutoSize = true, Padding = new Padding(12, 10, 0, 0), Text = "Search matches the decoded path (e.g. cod_effects/particles, avatar/, ui_icon). Enter to search." };
+            buttons.Controls.Add(MakeButton("Unpack checked", async (s, e) => await UnpackChecked(pakList)));
+            buttons.Controls.Add(MakeButton("Show in Explorer", async (s, e) => await ShowInExplorer(pakList)));
+            var hint = new Label { AutoSize = true, Padding = new Padding(12, 10, 0, 0), Text = "Search matches the decoded path (e.g. cod_effects/particles, avatar/, ui_icon). Enter to search. Grey = still in the game containers." };
             buttons.Controls.Add(hint);
 
             page.Controls.Add(pakList);
@@ -313,20 +313,24 @@ namespace AssetStudioGUI
                 PopulateBankList();
                 PopulatePakList();
                 var cfg = CodmSession.Config;
-                SetStatus($"{CodmSession.Index.Entries.Count} paks, {CodmSession.Catalog.Weapons.Count} weapons, {CodmSession.Wwise.Banks.Count} bank files. Export root: {cfg.ExportRootPath}" +
+                var index = CodmSession.Index;
+                var packed = index.Vfs != null ? index.Entries.Count(p => p.IsPacked) : 0;
+                SetStatus($"{index.Entries.Count} paks{(index.Vfs != null ? $" ({packed} still in the game containers, grey: unpacked to {cfg.UnpackRootPath} when loaded or exported)" : "")}, {CodmSession.Catalog.Weapons.Count} weapons, {CodmSession.Wwise.Banks.Count} bank files. Export root: {cfg.ExportRootPath}" +
                           (string.IsNullOrEmpty(cfg.VgmstreamPath) ? "  (vgmstream not configured: wems stay .wem)" : ""));
-                if (CodmSession.Index.MissingFolders.Count > 0)
-                    Log("Missing pak folders: " + string.Join("; ", CodmSession.Index.MissingFolders));
+                if (index.MissingFolders.Count > 0 && index.Vfs == null)
+                    Log("Missing pak folders: " + string.Join("; ", index.MissingFolders));
                 ApplyPendingQuery();
-                // attachments by container path, in the background (minutes the first time, cached after)
+                // in the background (minutes the first time, cached after): the CAB index for dependency
+                // loading, then attachments by container path
                 var _ = Task.Run(() =>
                 {
                     try
                     {
+                        CodmSession.EnsureCabIndex(Log);
                         CodmSession.EnsureContainerIndex(Log);
                         BeginInvoke(new Action(() => { if (current != null) ShowWeapon(current); }));
                     }
-                    catch (Exception ex) { Log("component index failed: " + ex.Message); }
+                    catch (Exception ex) { Log("background index failed: " + ex.Message); }
                 });
             }
             catch (Exception ex)
@@ -418,8 +422,8 @@ namespace AssetStudioGUI
 
         private async Task PreviewChecked()
         {
-            var paths = CheckedPaks();
-            if (paths.Length == 0)
+            var paks = CheckedPaks();
+            if (paks.Count == 0)
             {
                 SetStatus("Nothing checked.");
                 return;
@@ -427,8 +431,8 @@ namespace AssetStudioGUI
             SetBusy(true);
             try
             {
-                Log($"Loading {paths.Length} pak(s) for preview");
-                await owner.LoadPaksFromBrowser(paths, false, optDeps.Checked, Log);
+                Log($"Loading {paks.Count} pak(s) for preview");
+                await owner.LoadPaksFromBrowser(paks, false, optDeps.Checked, Log);
                 if (!owner.PreviewBestMesh())
                     Log("No mesh found in the checked paks.");
             }
@@ -439,6 +443,7 @@ namespace AssetStudioGUI
             finally
             {
                 SetBusy(false);
+                RefreshPackedMarks();
             }
         }
 
@@ -527,6 +532,7 @@ namespace AssetStudioGUI
                     Checked = check,
                     ToolTipText = evidence != null && evidence.Count > 0 ? string.Join(Environment.NewLine, evidence.Take(12)) : e.FullPath,
                 };
+                MarkPacked(item, e);
                 assetList.Items.Add(item);
             }
         }
@@ -549,19 +555,40 @@ namespace AssetStudioGUI
             }
         }
 
-        private string[] CheckedPaks()
+        /// <summary>Grey text and a tooltip for a pak that is still in the game containers.</summary>
+        private static void MarkPacked(ListViewItem item, PakEntry e)
+        {
+            if (!e.IsPacked)
+                return;
+            item.ForeColor = SystemColors.GrayText;
+            var evidence = item.ToolTipText == e.FullPath ? "" : Environment.NewLine + item.ToolTipText;
+            item.ToolTipText = $"In the game containers ({e.Container.SourceLabel}, {FormatSize(e.Container.Size)}); unpacked when loaded or exported to{Environment.NewLine}{e.FullPath}{evidence}";
+        }
+
+        /// <summary>Back to normal text for the rows whose paks were unpacked meanwhile.</summary>
+        private void RefreshPackedMarks()
+        {
+            foreach (var list in new[] { assetList, pakList })
+                foreach (ListViewItem item in list.Items)
+                    if (item.Tag is PakEntry e && item.ForeColor == SystemColors.GrayText && !e.IsPacked)
+                    {
+                        item.ForeColor = list.ForeColor;
+                        item.ToolTipText = e.FullPath;
+                    }
+        }
+
+        private List<PakEntry> CheckedPaks()
         {
             return CheckedPaks(assetList);
         }
 
-        private static string[] CheckedPaks(ListView list)
+        private static List<PakEntry> CheckedPaks(ListView list)
         {
             return list.CheckedItems.Cast<ListViewItem>()
                 .Select(i => i.Tag as PakEntry)
                 .Where(e => e != null)
-                .Select(e => e.FullPath)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+                .Distinct()
+                .ToList();
         }
 
         private void SaveClass()
@@ -581,9 +608,9 @@ namespace AssetStudioGUI
             }
         }
 
-        private async Task LoadIntoMain(string[] paths, bool additive)
+        private async Task LoadIntoMain(IReadOnlyList<PakEntry> paks, bool additive)
         {
-            if (paths.Length == 0)
+            if (paks.Count == 0)
             {
                 SetStatus("Nothing checked.");
                 return;
@@ -591,9 +618,9 @@ namespace AssetStudioGUI
             SetBusy(true);
             try
             {
-                Log($"{(additive ? "Adding" : "Loading")} {paths.Length} pak(s) into AssetStudio{(optDeps.Checked ? " with dependencies" : "")}");
-                await owner.LoadPaksFromBrowser(paths, additive, optDeps.Checked, Log);
-                SetStatus($"{paths.Length} pak(s) loaded.");
+                Log($"{(additive ? "Adding" : "Loading")} {paks.Count} pak(s) into AssetStudio{(optDeps.Checked ? " with dependencies" : "")}");
+                await owner.LoadPaksFromBrowser(paks, additive, optDeps.Checked, Log);
+                SetStatus($"{paks.Count} pak(s) loaded.");
             }
             catch (Exception ex)
             {
@@ -602,6 +629,36 @@ namespace AssetStudioGUI
             finally
             {
                 SetBusy(false);
+                RefreshPackedMarks();
+            }
+        }
+
+        /// <summary>Write the checked paks that are still in the game containers to the unpack folder.</summary>
+        private async Task UnpackChecked(ListView list)
+        {
+            var paks = CheckedPaks(list);
+            var packed = paks.Where(p => p.IsPacked).ToList();
+            if (packed.Count == 0)
+            {
+                SetStatus(paks.Count == 0 ? "Nothing checked." : "The checked paks are unpacked already.");
+                return;
+            }
+            SetBusy(true);
+            try
+            {
+                SetStatus($"Unpacking {packed.Count} pak(s)...");
+                await Task.Run(() => PakEntry.EnsureOnDisk(packed, Log));
+                SetStatus($"{packed.Count} pak(s) unpacked to {CodmSession.Config.UnpackRootPath}");
+            }
+            catch (Exception ex)
+            {
+                Log("Unpack failed: " + ex.Message);
+                SetStatus("Unpack failed: " + ex.Message);
+            }
+            finally
+            {
+                SetBusy(false);
+                RefreshPackedMarks();
             }
         }
 
@@ -658,12 +715,32 @@ namespace AssetStudioGUI
             finally
             {
                 SetBusy(false);
+                RefreshPackedMarks();
             }
         }
 
-        private void ShowInExplorer()
+        private async Task ShowInExplorer(ListView list)
         {
-            var entry = assetList.SelectedItems.Count > 0 ? assetList.SelectedItems[0].Tag : null;
+            var entry = list.SelectedItems.Count > 0 ? list.SelectedItems[0].Tag : null;
+            if (entry is PakEntry pak && pak.IsPacked)
+            {
+                // nothing on disk yet: unpack it so there is a file to show
+                SetBusy(true);
+                try
+                {
+                    await Task.Run(() => pak.EnsureOnDisk(Log));
+                }
+                catch (Exception ex)
+                {
+                    Log("Unpack failed: " + ex.Message);
+                    return;
+                }
+                finally
+                {
+                    SetBusy(false);
+                    RefreshPackedMarks();
+                }
+            }
             var path = (entry as PakEntry)?.FullPath ?? (entry as WwiseBankInfo)?.Path;
             if (path != null)
                 SelectInExplorer(path);
@@ -712,11 +789,13 @@ namespace AssetStudioGUI
             var hits = (text.Length == 0 ? index.Entries.Take(0) : index.Search(text)).Take(3000).ToList();
             foreach (var e in hits)
             {
-                pakList.Items.Add(new ListViewItem(new[] { e.Source, e.Name.Module ?? "", FormatSize(e.Size), e.Name.Path + (e.Name.Category != null ? "#" + e.Name.Category : "") + (e.Name.Shard >= 0 ? "@" + e.Name.Shard : ""), e.FileName })
+                var item = new ListViewItem(new[] { e.Source, e.Name.Module ?? "", FormatSize(e.Size), e.Name.Path + (e.Name.Category != null ? "#" + e.Name.Category : "") + (e.Name.Shard >= 0 ? "@" + e.Name.Shard : ""), e.FileName })
                 {
                     Tag = e,
                     ToolTipText = e.FullPath,
-                });
+                };
+                MarkPacked(item, e);
+                pakList.Items.Add(item);
             }
             pakList.EndUpdate();
             if (text.Length > 0)
@@ -837,7 +916,7 @@ namespace AssetStudioGUI
         {
             busy = value;
             UseWaitCursor = value;
-            foreach (var b in new[] { btnLoad, btnAdd, btnPreview, btnExport, btnExtractWems })
+            foreach (var b in new[] { btnLoad, btnAdd, btnPreview, btnExport, btnUnpack, btnExtractWems })
                 if (b != null) b.Enabled = !value;
         }
 

@@ -264,18 +264,19 @@ namespace AssetStudio.Codm.Vfs
             public int RawSize;
         }
 
-        /// <summary>Sequential reader over a part with a sliding 1 MB window.</summary>
+        /// <summary>Sequential reader over a part with a sliding window (1 MB unless a short read asks for less).</summary>
         private sealed class PartWalker : IDisposable
         {
             private readonly FileStream fs;
-            private readonly byte[] buf = new byte[1 << 20];
+            private readonly byte[] buf;
             private long bufStart = -1;
             private int bufLen;
             public long Length => fs.Length;
 
-            public PartWalker(string path)
+            public PartWalker(string path, int window = 1 << 20)
             {
                 fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16);
+                buf = new byte[window];
             }
 
             private bool Ensure(long pos, int count)
@@ -345,19 +346,26 @@ namespace AssetStudio.Codm.Vfs
         // ------------------------------------------------------------------ reading
 
         /// <summary>Decompress a whole entry (requires the offset cache).</summary>
-        public byte[] Read(QtsfEntry e)
+        public byte[] Read(QtsfEntry e) => Read(e, long.MaxValue);
+
+        /// <summary>
+        /// Decompress the first nodes of an entry until at least <paramref name="maxBytes"/> are out, or the
+        /// whole entry when it is not longer (requires the offset cache).
+        /// </summary>
+        public byte[] Read(QtsfEntry e, long maxBytes)
         {
             if (e.Offset < 0)
                 throw new InvalidOperationException($"{Label}: entry offsets not built yet (run the base pack index)");
             if (e.Size == 0) return new byte[0];
+            var whole = maxBytes >= e.Size;
             lock (gate)
             {
-                using (var walker = new PartWalker(PartPath(e.Part)))
+                using (var walker = whole ? new PartWalker(PartPath(e.Part)) : new PartWalker(PartPath(e.Part), (int)Math.Min(1 << 20, maxBytes + (64 << 10))))
                 {
-                    var dst = new byte[e.Size];
+                    var dst = new byte[whole ? e.Size : Math.Min(e.Size, maxBytes + BlockSize)];
                     var acc = 0;
                     var pos = e.Offset;
-                    while (acc < dst.Length)
+                    while (acc < dst.Length && (whole || acc < maxBytes))
                     {
                         if (!walker.TryReadHeader(pos, out var h))
                         {
@@ -380,6 +388,11 @@ namespace AssetStudio.Codm.Vfs
                         }
                         acc += raw;
                         pos += h.NodeSize;
+                    }
+                    if (!whole && acc >= maxBytes)
+                    {
+                        Array.Resize(ref dst, acc);
+                        return dst;
                     }
                     if (acc != dst.Length)
                         throw new InvalidDataException($"{Label}: {e.Name}: read {acc} of {dst.Length} bytes (node chain ended early at {pos})");

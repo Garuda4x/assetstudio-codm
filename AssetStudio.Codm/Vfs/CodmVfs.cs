@@ -20,6 +20,8 @@ namespace AssetStudio.Codm.Vfs
         public long Size { get; internal set; }
         public bool IsChunk { get; internal set; }
         public string ChunkId { get; internal set; }
+        /// <summary>First 8 bytes of the content hash the container stores for the entry; changes when a patch replaces it.</summary>
+        public long Stamp { get; internal set; }
         internal QtsEntry Qts { get; set; }
         internal QtsfEntry Qtsf { get; set; }
 
@@ -64,11 +66,25 @@ namespace AssetStudio.Codm.Vfs
             }
         }
 
+        /// <summary>The configured container folders (<see cref="CodmConfig.VfsFolders"/>) or the default ones under the game root.</summary>
+        public static IEnumerable<string> Folders(CodmConfig cfg)
+        {
+            return cfg.VfsFolders != null && cfg.VfsFolders.Count > 0 ? cfg.VfsFolders.Select(cfg.ResolveGamePath) : DefaultFolders(cfg);
+        }
+
+        /// <summary>True for a 1.9.57 install: at least one container folder exists.</summary>
+        public static bool HasContainers(CodmConfig cfg) => Folders(cfg).Any(Directory.Exists);
+
+        /// <summary>Where <c>codm unpack</c> and on-demand loading write an entry: &lt;UnpackRoot&gt;/&lt;source&gt;/&lt;file name&gt;.</summary>
+        public static string UnpackPath(CodmConfig cfg, VfsEntry e)
+        {
+            return Path.Combine(cfg.UnpackRootPath, e.IsChunk ? "chunks" : e.SourceLabel, e.FileName);
+        }
+
         public static CodmVfs Open(CodmConfig cfg, Action<string> log = null)
         {
             var vfs = new CodmVfs { Config = cfg, log = log };
-            var folders = cfg.VfsFolders != null && cfg.VfsFolders.Count > 0 ? cfg.VfsFolders.Select(cfg.ResolveGamePath) : DefaultFolders(cfg);
-            foreach (var folder in folders)
+            foreach (var folder in Folders(cfg))
             {
                 if (!Directory.Exists(folder))
                 {
@@ -110,7 +126,7 @@ namespace AssetStudio.Codm.Vfs
                 var source = pack.Label == "puffer" ? VfsSource.Puffer : VfsSource.Patch;
                 foreach (var q in pack.Entries)
                 {
-                    var e = new VfsEntry { Source = source, RawName = q.Name, Size = q.Size, Qts = q, IsChunk = q.IsChunk, ChunkId = q.ChunkId };
+                    var e = new VfsEntry { Source = source, RawName = q.Name, Size = q.Size, Qts = q, IsChunk = q.IsChunk, ChunkId = q.ChunkId, Stamp = BitConverter.ToInt64(q.Hash, 0) };
                     if (q.IsChunk)
                     {
                         e.FileName = q.ChunkId + ".cpak";
@@ -128,7 +144,7 @@ namespace AssetStudio.Codm.Vfs
             {
                 foreach (var b in BasePack.Entries)
                 {
-                    var e = new VfsEntry { Source = VfsSource.Streaming, RawName = b.Name, Size = b.Size, Qtsf = b, IsChunk = b.IsChunk, ChunkId = b.ChunkId };
+                    var e = new VfsEntry { Source = VfsSource.Streaming, RawName = b.Name, Size = b.Size, Qtsf = b, IsChunk = b.IsChunk, ChunkId = b.ChunkId, Stamp = BitConverter.ToInt64(b.Hash20, 0) };
                     if (b.IsChunk)
                     {
                         e.FileName = b.ChunkId + ".cpak";
@@ -153,19 +169,32 @@ namespace AssetStudio.Codm.Vfs
 
         public int ChunkCount => chunks.Count;
 
+        private readonly object offsetGate = new object();
+        private volatile bool offsetsReady;
+
         /// <summary>Load or build the base pack offset cache (a walk over all parts, minutes the first time).</summary>
         public void EnsureBaseOffsets(CodmConfig cfg, Action<string> progress = null, bool rebuild = false)
         {
-            if (BasePack == null) return;
-            var cache = cfg.CachePath($"qtsf-{BasePack.Prefix}-offsets.bin");
-            if (!rebuild && BasePack.EntriesWithOffsets > 0) return;
-            if (!rebuild && BasePack.LoadOffsets(cache))
+            if (BasePack == null || (offsetsReady && !rebuild)) return;
+            lock (offsetGate)
             {
-                progress?.Invoke($"{BasePack.Label}: offsets loaded from {cache} ({BasePack.EntriesWithOffsets}/{BasePack.Entries.Count} entries)");
-                return;
+                if (offsetsReady && !rebuild) return;
+                var cache = cfg.CachePath($"qtsf-{BasePack.Prefix}-offsets.bin");
+                if (!rebuild && BasePack.EntriesWithOffsets > 0)
+                {
+                    offsetsReady = true;
+                    return;
+                }
+                if (!rebuild && BasePack.LoadOffsets(cache))
+                {
+                    progress?.Invoke($"{BasePack.Label}: offsets loaded from {cache} ({BasePack.EntriesWithOffsets}/{BasePack.Entries.Count} entries)");
+                    offsetsReady = true;
+                    return;
+                }
+                progress?.Invoke($"{BasePack.Label}: building the entry offset cache (one walk over {BasePack.PartCount} parts, minutes)...");
+                BasePack.BuildOffsets(cache, progress);
+                offsetsReady = true;
             }
-            progress?.Invoke($"{BasePack.Label}: building the entry offset cache (one walk over {BasePack.PartCount} parts)...");
-            BasePack.BuildOffsets(cache, progress);
         }
 
         public string BaseOffsetCachePath(CodmConfig cfg) => BasePack == null ? null : cfg.CachePath($"qtsf-{BasePack.Prefix}-offsets.bin");
@@ -181,16 +210,63 @@ namespace AssetStudio.Codm.Vfs
             }
         }
 
-        public byte[] ReadRaw(VfsEntry e)
+        public byte[] ReadRaw(VfsEntry e) => ReadPrefix(e, long.MaxValue);
+
+        /// <summary>The first bytes of an entry (whole 16 KB blocks, at least <paramref name="bytes"/>), or all of it when it is not longer.</summary>
+        public byte[] ReadPrefix(VfsEntry e, long bytes)
         {
-            if (e.Qts != null) return e.Qts.Pack.Read(e.Qts);
+            if (e.Qts != null) return e.Qts.Pack.Read(e.Qts, bytes);
             if (e.Qtsf != null)
             {
                 if (e.Qtsf.Offset < 0 && Config != null)
                     EnsureBaseOffsets(Config, log);
-                return BasePack.Read(e.Qtsf);
+                return BasePack.Read(e.Qtsf, bytes);
             }
             throw new InvalidOperationException("entry without a pack");
+        }
+
+        /// <summary>
+        /// Bundle header and directory (serialized file names) of an entry, read from its first block when
+        /// the directory sits there (the usual layout), else from the whole entry.
+        /// </summary>
+        public BundleHeaderReader.Info ReadBundleHeader(VfsEntry e)
+        {
+            var prefix = ReadPrefix(e, QtsPack.BlockSize);
+            using (var ms = new MemoryStream(prefix))
+            {
+                var info = BundleHeaderReader.Read(ms, e.Size);
+                if (info != null) return info;
+            }
+            using (var ms = new MemoryStream(ReadRaw(e)))
+                return BundleHeaderReader.Read(ms);
+        }
+
+        /// <summary>
+        /// Order entries the way they lie on disk (pack, part, offset), so reading many of them is one forward
+        /// sweep per part instead of random seeks; the containers usually sit on a hard disk.
+        /// </summary>
+        public List<T> InStorageOrder<T>(IEnumerable<T> items, Func<T, VfsEntry> entryOf)
+        {
+            var list = items.ToList();
+            if (list.Any(x => entryOf(x).Qtsf != null) && Config != null)
+                EnsureBaseOffsets(Config, log);
+            var keys = new Dictionary<VfsEntry, (int pack, int part, long offset)>();
+            foreach (var x in list)
+            {
+                var e = entryOf(x);
+                if (keys.ContainsKey(e)) continue;
+                try
+                {
+                    keys[e] = e.Qts != null
+                        ? (QtsPacks.IndexOf(e.Qts.Pack), e.Qts.Part, e.Qts.Pack.DataOffset(e.Qts))
+                        : (QtsPacks.Count, e.Qtsf.Part, e.Qtsf.Offset);
+                }
+                catch (Exception)
+                {
+                    keys[e] = (int.MaxValue, 0, 0); // part missing: read last, the read reports the error
+                }
+            }
+            return list.OrderBy(x => keys[entryOf(x)].pack).ThenBy(x => keys[entryOf(x)].part).ThenBy(x => keys[entryOf(x)].offset).ToList();
         }
 
         /// <summary>The chunk's bytes: the copy in <paramref name="preferred"/> when that pack has one, else the first pack holding it.</summary>
@@ -226,13 +302,47 @@ namespace AssetStudio.Codm.Vfs
             return list[0];
         }
 
-        /// <summary>Read an entry; bundles are rewritten into stock Unity 5.6 bundles unless <paramref name="normalize"/> is false.</summary>
-        public byte[] ReadBundle(VfsEntry e, bool normalize, BundleNormalizer.Stats stats = null, Action<string> log = null)
+        /// <summary>
+        /// Read an entry; bundles are rewritten into stock Unity 5.6 bundles unless <paramref name="normalize"/> is false.
+        /// <paramref name="embedStreams"/> false leaves streamed texture data out (enough for reading metadata).
+        /// </summary>
+        public byte[] ReadBundle(VfsEntry e, bool normalize, BundleNormalizer.Stats stats = null, Action<string> log = null, bool embedStreams = true)
         {
             var raw = ReadRaw(e);
             if (!normalize || !BundleNormalizer.IsUnityFS(raw))
                 return raw;
-            return BundleNormalizer.Normalize(raw, md5 => ReadChunk(md5, e.Source), stats, log) ?? raw;
+            return BundleNormalizer.Normalize(raw, md5 => ReadChunk(md5, e.Source), stats, log, embedStreams) ?? raw;
+        }
+
+        /// <summary>
+        /// Write an entry (normalized when it is a bundle) to <paramref name="path"/> through a temporary file,
+        /// so an interrupted write never leaves a truncated pak behind. Returns the bytes written.
+        /// </summary>
+        public long Materialize(VfsEntry e, string path, BundleNormalizer.Stats stats = null, Action<string> log = null)
+        {
+            var data = e.IsBundle ? ReadBundle(e, true, stats, log) : ReadRaw(e);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var tmp = path + "." + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp";
+            try
+            {
+                File.WriteAllBytes(tmp, data);
+                File.Move(tmp, path);
+            }
+            catch (IOException) when (File.Exists(path))
+            {
+                TryDelete(tmp); // written meanwhile by another reader or a codm unpack
+            }
+            catch
+            {
+                TryDelete(tmp);
+                throw;
+            }
+            return data.Length;
+        }
+
+        private static void TryDelete(string path)
+        {
+            try { File.Delete(path); } catch (Exception) { }
         }
 
         public void Dispose()

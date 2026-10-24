@@ -26,6 +26,18 @@ namespace AssetStudio.Codm
         public static Info Read(string path)
         {
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024))
+                return Read(fs) ?? throw new InvalidDataException($"truncated bundle: {path}");
+        }
+
+        /// <summary>
+        /// Read from a stream positioned at the bundle start. <paramref name="fullLength"/> is the bundle's real
+        /// length when the stream only holds its first bytes; the result is null when the directory is not
+        /// inside those bytes (stored at the end, or longer than the prefix).
+        /// </summary>
+        public static Info Read(Stream fs, long fullLength = -1)
+        {
+            if (fullLength < 0)
+                fullLength = fs.Length;
             using (var reader = new EndianBinaryReader(fs))
             {
                 var info = new Info { Signature = reader.ReadStringToNull() };
@@ -45,11 +57,15 @@ namespace AssetStudio.Codm
                 byte[] blocksInfoBytes;
                 if ((flags & ArchiveFlags.BlocksInfoAtTheEnd) != 0)
                 {
+                    if (fullLength != fs.Length)
+                        return null;
                     fs.Position = fs.Length - compressedBlocksInfoSize;
                     blocksInfoBytes = reader.ReadBytes((int)compressedBlocksInfoSize);
                 }
                 else
                 {
+                    if (fs.Position + compressedBlocksInfoSize > fs.Length)
+                        return null;
                     blocksInfoBytes = reader.ReadBytes((int)compressedBlocksInfoSize);
                 }
 

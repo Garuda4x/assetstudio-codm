@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -111,11 +112,18 @@ namespace AssetStudioGUI
                 codmBrowser.SelectWeapon(query);
         }
 
-        /// <summary>Load pak files into the main window; <paramref name="additive"/> keeps what is already loaded.</summary>
-        internal async Task LoadPaksFromBrowser(string[] paths, bool additive, bool resolveDependencies = false, Action<string> log = null)
+        /// <summary>
+        /// Load paks into the main window; <paramref name="additive"/> keeps what is already loaded. Paks still
+        /// in the 1.9.57 containers are unpacked first (and stay unpacked for the next time).
+        /// </summary>
+        internal async Task LoadPaksFromBrowser(IReadOnlyList<PakEntry> paks, bool additive, bool resolveDependencies = false, Action<string> log = null)
         {
-            if (paths == null || paths.Length == 0)
+            if (paks == null || paks.Count == 0)
                 return;
+            var packed = paks.Count(p => p.IsPacked);
+            if (packed > 0)
+                StatusStripUpdate($"Unpacking {packed} pak(s) from the game containers...");
+            var paths = await Task.Run(() => PakEntry.EnsureOnDisk(paks, log));
             if (!additive)
                 ResetForm();
             assetsManager.SpecifyUnityVersion = specifyUnityVersion.Text;

@@ -35,6 +35,8 @@ or after the command: `--config <file>` (another config, e.g. `codm --config cod
 | `codm typetree <pak> [--max n]` | whether the bundle carries type trees (CoD Mobile: no) |
 | `codm vfs` | 1.9.57 containers found under the game root: packs, entries, chunks, offset cache state |
 | `codm vfs-index [--rebuild]` | walk the base pack once and cache where each entry starts (about 7 minutes) |
+| `codm vfs-check [--source s] [--bundles] [--max n]` | read and decompress every container entry in storage order and list the ones that fail |
+| `codm vfs-check --unpacked` | compare every file in the unpack folder with a fresh read of its container entry (stale after a game patch?) |
 | `codm unpack <text...> [--list] [--source s] [--raw] [--chunks] [--max n] [--out d]` | extract container entries whose decoded name contains the text as loose paks, format 18 rewritten to stock; see [codm-containers.md](codm-containers.md) |
 
 ## Examples

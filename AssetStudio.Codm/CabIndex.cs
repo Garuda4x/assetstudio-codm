@@ -10,7 +10,8 @@ namespace AssetStudio.Codm
     /// Map from serialized file name inside a bundle (CAB-...) to the pak(s) that contain it. Bundles
     /// reference each other by these names (SerializedFile.m_Externals), so this is what turns an
     /// unresolved PPtr into a pak to load. Built from bundle headers only and cached as JSON; entries
-    /// are reused while a pak's size and modification time are unchanged.
+    /// are reused while a pak's size and modification time (container entries: size and content hash,
+    /// see <see cref="PakEntry.CacheKey"/>) are unchanged.
     /// </summary>
     public sealed class CabIndex
     {
@@ -18,6 +19,7 @@ namespace AssetStudio.Codm
         {
             public string Path { get; set; }
             public long Size { get; set; }
+            /// <summary>File modification time, or the content hash stamp of a container entry.</summary>
             public long Mtime { get; set; }
             public List<string> Cabs { get; set; } = new List<string>();
         }
@@ -56,32 +58,55 @@ namespace AssetStudio.Codm
             var reused = 0;
             var failed = 0;
             var total = index.Entries.Count;
-            System.Threading.Tasks.Parallel.For(0, index.Entries.Count, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 8 }, i =>
+            var onDisk = new List<int>();
+            var packed = new List<int>();
+            for (var i = 0; i < total; i++)
             {
                 var pak = index.Entries[i];
-                var fi = new FileInfo(pak.FullPath);
-                var mtime = fi.LastWriteTimeUtc.Ticks;
-                if (cached.TryGetValue(pak.FullPath, out var ce) && ce.Size == fi.Length && ce.Mtime == mtime)
+                var (size, stamp) = pak.CacheKey();
+                if (cached.TryGetValue(pak.FullPath, out var ce) && ce.Size == size && ce.Mtime == stamp)
                 {
-                    System.Threading.Interlocked.Increment(ref reused);
+                    entries[i] = ce;
+                    reused++;
                 }
                 else
                 {
-                    ce = new CacheEntry { Path = pak.FullPath, Size = fi.Length, Mtime = mtime };
-                    try
-                    {
-                        ce.Cabs = BundleHeaderReader.Read(pak.FullPath).Entries;
-                    }
-                    catch (Exception)
-                    {
-                        System.Threading.Interlocked.Increment(ref failed);
-                    }
-                    var n = System.Threading.Interlocked.Increment(ref scanned);
-                    if (n % 1000 == 0)
-                        progress?.Invoke($"CAB index: {n + reused}/{total} paks");
+                    entries[i] = new CacheEntry { Path = pak.FullPath, Size = size, Mtime = stamp };
+                    (pak.IsPacked ? packed : onDisk).Add(i);
                 }
-                entries[i] = ce;
-            });
+            }
+
+            void Scan(int i)
+            {
+                var pak = index.Entries[i];
+                try
+                {
+                    entries[i].Cabs = (pak.IsPacked ? pak.Vfs.ReadBundleHeader(pak.Container) : BundleHeaderReader.Read(pak.FullPath)).Entries;
+                }
+                catch (Exception)
+                {
+                    // a file is retried on the next build; a container entry only changes with its stamp
+                    // (the patch pack holds a 32-byte placeholder .pak), so its failure stays cached
+                    if (!pak.IsVirtual)
+                        entries[i].Size = -1;
+                    System.Threading.Interlocked.Increment(ref failed);
+                }
+                var n = System.Threading.Interlocked.Increment(ref scanned);
+                if (n % 1000 == 0)
+                    progress?.Invoke($"CAB index: {n + reused}/{total} paks");
+            }
+
+            System.Threading.Tasks.Parallel.ForEach(onDisk, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 8 }, Scan);
+            if (packed.Count > 0)
+            {
+                // bundles still in the game containers: only their first block is read, in storage order
+                // (one forward sweep per part; the containers usually sit on a hard disk)
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                progress?.Invoke($"CAB index: reading the headers of {packed.Count} bundles from the game containers (once, cached after)...");
+                foreach (var i in index.Vfs.InStorageOrder(packed, k => index.Entries[k].Container))
+                    Scan(i);
+                progress?.Invoke($"CAB index: container headers read in {sw.Elapsed.TotalSeconds:F0} s");
+            }
             result.Failed = failed;
             for (var i = 0; i < entries.Length; i++)
                 result.Add(index.Entries[i], entries[i].Cabs);
@@ -107,7 +132,8 @@ namespace AssetStudio.Codm
             cabsByPak[pak.FullPath] = cabs;
             foreach (var cab in cabs)
             {
-                if (cab.EndsWith(".resS", StringComparison.OrdinalIgnoreCase) || cab.EndsWith(".resource", StringComparison.OrdinalIgnoreCase))
+                // resource nodes: .resS/.resource, and the texture stream chunks the normalizer embeds as <md5>.cpak
+                if (cab.EndsWith(".resS", StringComparison.OrdinalIgnoreCase) || cab.EndsWith(".resource", StringComparison.OrdinalIgnoreCase) || cab.EndsWith(".cpak", StringComparison.OrdinalIgnoreCase))
                     continue;
                 if (!byCab.TryGetValue(cab, out var list))
                     byCab[cab] = list = new List<PakEntry>();

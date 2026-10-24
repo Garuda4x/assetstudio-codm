@@ -192,6 +192,23 @@ namespace AssetStudio.Codm
             }
         }
 
+        /// <summary>
+        /// Weapon names from the pak names, the tokens that can appear in Wwise event names. On a 1.9.57
+        /// install the index lists every bundle of the containers, unpacked or not, so all weapons count.
+        /// </summary>
+        public static HashSet<string> WeaponTokens(PakIndex index)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in index.Entries)
+            {
+                var m = WeaponPath.Match(e.Name.Path);
+                if (!m.Success) continue;
+                set.Add(m.Groups[4].Value.ToLowerInvariant());
+                set.Add(NormalizeName(m.Groups[4].Value));
+            }
+            return set;
+        }
+
         /// <summary>Strip cosmetic prefixes/suffixes so "mythicpeacekeepermk1" and "baseversionpeacekeepermk1v72" both become "peacekeepermk1".</summary>
         public static string NormalizeName(string name)
         {

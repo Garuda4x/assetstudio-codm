@@ -41,8 +41,10 @@ namespace AssetStudio.Codm.Vfs
         /// <summary>
         /// Returns the normalized bundle, or null when nothing needed rewriting (the caller keeps the original).
         /// <paramref name="resolveChunk"/> receives the md5 of a chunk and returns its bytes (or null).
+        /// <paramref name="embedStreams"/> false skips the streamed-data chunks (texture pixels): the result
+        /// then only serves metadata reads.
         /// </summary>
-        public static byte[] Normalize(byte[] bundle, Func<string, byte[]> resolveChunk, Stats stats = null, Action<string> log = null)
+        public static byte[] Normalize(byte[] bundle, Func<string, byte[]> resolveChunk, Stats stats = null, Action<string> log = null, bool embedStreams = true)
         {
             if (!IsUnityFS(bundle))
                 return null;
@@ -119,7 +121,7 @@ namespace AssetStudio.Codm.Vfs
             var extra = new List<Node>();
             foreach (var n in nodes)
             {
-                if (!IsSerializedFile(n.Data)) continue;
+                if (!embedStreams || !IsSerializedFile(n.Data)) continue;
                 foreach (var md5 in FindStreamRefs(n.Data))
                 {
                     var name = md5 + ".cpak";

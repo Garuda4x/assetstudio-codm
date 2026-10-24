@@ -135,7 +135,7 @@ namespace AssetStudio.Codm
                 try
                 {
                     log($"[Export] loading {paks.Count} pak(s)");
-                    am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
+                    am.LoadFiles(PakEntry.EnsureOnDisk(paks, log));
                     report.PaksLoaded.AddRange(paks.Select(p => p.FullPath));
 
                     if (o.ResolveDependencies && o.Models)
@@ -478,7 +478,7 @@ namespace AssetStudio.Codm
                 var am = new AssetsManager();
                 try
                 {
-                    am.LoadFiles(fx.FullPath);
+                    am.LoadFiles(fx.EnsureOnDisk(log));
                     var cabs = cabIndexProvider?.Invoke();
                     if (cabs != null)
                         DependencyResolver.Resolve(am, cabs, cfg, log, maxRounds: 1, maxPaks: 80, skipPrefixes: fxSkip);
@@ -587,8 +587,7 @@ namespace AssetStudio.Codm
 
         private string SourceOf(SerializedFile file)
         {
-            var bundlePath = file.originalPath ?? file.fullName;
-            var entry = index?.Entries.FirstOrDefault(e => string.Equals(e.FullPath, bundlePath, StringComparison.OrdinalIgnoreCase));
+            var entry = index?.ByFullPath(file.originalPath ?? file.fullName);
             return entry?.Source ?? "streaming";
         }
 
@@ -624,7 +623,7 @@ namespace AssetStudio.Codm
         private string SourceLabel(SerializedFile file)
         {
             var bundlePath = file.originalPath ?? file.fullName;
-            var entry = index?.Entries.FirstOrDefault(e => string.Equals(e.FullPath, bundlePath, StringComparison.OrdinalIgnoreCase));
+            var entry = index?.ByFullPath(bundlePath);
             var module = entry != null ? entry.Name.Module : PakName.Parse(Path.GetFileName(bundlePath ?? "")).Module;
             if (module == null)
                 return entry?.Source ?? "bundle";

@@ -84,6 +84,7 @@ namespace CodmCli
                     case "typetree": return CmdTypeTree(opts);
                     case "vfs": return CmdVfs(opts);
                     case "vfs-index": return CmdVfsIndex(opts);
+                    case "vfs-check": return CmdVfsCheck(opts);
                     case "unpack": return CmdUnpack(opts);
                     default:
                         Console.Error.WriteLine($"Unknown command '{command}'.");
@@ -132,6 +133,7 @@ namespace CodmCli
             Console.WriteLine("  typetree <pak>                 report whether the bundle carries type trees");
             Console.WriteLine("  vfs                            1.9.57 containers found for the config: packs, entries, chunks, base offset cache");
             Console.WriteLine("  vfs-index [--rebuild]          walk the base pack once and cache where each entry starts (minutes)");
+            Console.WriteLine("  vfs-check [--source s]         read and decompress every container entry, report failures [--bundles] [--max n]; --unpacked: compare the unpack folder with the containers");
             Console.WriteLine("  unpack <text...> [--out d]     extract container entries whose decoded name contains the text as loose paks (format 18 rewritten to stock) [--list] [--raw] [--chunks] [--max n] [--source puffer|extract|streaming]");
             Console.WriteLine();
             Console.WriteLine("Global (before or after the command): --config <file>  --diag");
@@ -176,6 +178,80 @@ namespace CodmCli
             v.EnsureBaseOffsets(cfg, Console.Error.WriteLine, o.Has("rebuild"));
             Console.WriteLine($"{v.BasePack.EntriesWithOffsets}/{v.BasePack.Entries.Count} entries located; cache {v.BaseOffsetCachePath(cfg)}");
             return 0;
+        }
+
+        /// <summary>
+        /// Read and decompress every container entry (in storage order) and report the ones that fail; with
+        /// --unpacked, compare the files in the unpack folder with a fresh read of their container entry instead
+        /// (finds files unpacked before a game patch).
+        /// </summary>
+        private static int CmdVfsCheck(Options o)
+        {
+            if (o.Has("unpacked"))
+                return CheckUnpacked();
+            var v = EnsureVfs();
+            var source = o.Get("source");
+            var entries = v.Entries
+                .Where(e => source == null || string.Equals(e.SourceLabel, source, StringComparison.OrdinalIgnoreCase))
+                .Where(e => !o.Has("bundles") || e.IsBundle)
+                .Take(o.GetInt("max", int.MaxValue))
+                .ToList();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long bytes = 0;
+            var failed = 0;
+            var done = 0;
+            foreach (var e in v.InStorageOrder(entries, x => x))
+            {
+                try
+                {
+                    var data = v.ReadRaw(e);
+                    if (data.Length != e.Size)
+                        throw new InvalidDataException($"read {data.Length} bytes, the index says {e.Size}");
+                    bytes += data.Length;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Console.WriteLine($"FAILED {e.SourceLabel} {e.Decoded}: {ex.Message}");
+                }
+                if (++done % 5000 == 0)
+                    Console.Error.WriteLine($"{done}/{entries.Count} entries, {bytes / (1024 * 1024):N0} MB, {failed} failed, {sw.Elapsed.TotalSeconds:F0} s");
+            }
+            Console.WriteLine($"{entries.Count - failed}/{entries.Count} entries read ({bytes:N0} bytes) in {sw.Elapsed.TotalSeconds:F0} s, {failed} failed");
+            return failed == 0 ? 0 : 1;
+        }
+
+        private static int CheckUnpacked()
+        {
+            EnsureIndex();
+            if (pakIndex.Vfs == null)
+            {
+                Console.Error.WriteLine("no containers for this config");
+                return 1;
+            }
+            var unpacked = pakIndex.Entries.Where(e => e.IsVirtual && File.Exists(e.FullPath)).ToList();
+            var differ = 0;
+            var failed = 0;
+            foreach (var e in pakIndex.Vfs.InStorageOrder(unpacked, x => x.Container))
+            {
+                try
+                {
+                    var fresh = pakIndex.Vfs.ReadBundle(e.Container, true);
+                    var disk = File.ReadAllBytes(e.FullPath);
+                    if (disk.Length != fresh.Length || !disk.SequenceEqual(fresh))
+                    {
+                        differ++;
+                        Console.WriteLine($"DIFFERS {e.Source} {e.Name.Decoded}: {disk.Length:N0} bytes on disk, {fresh.Length:N0} from the containers  {e.FullPath}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Console.WriteLine($"FAILED {e.Source} {e.Name.Decoded}: {ex.Message}");
+                }
+            }
+            Console.WriteLine($"{unpacked.Count - differ - failed}/{unpacked.Count} unpacked paks match the containers, {differ} differ (delete them to unpack again), {failed} unreadable");
+            return differ + failed == 0 ? 0 : 1;
         }
 
         private static int CmdUnpack(Options o)
@@ -236,7 +312,8 @@ namespace CodmCli
         private static void EnsureIndex()
         {
             if (pakIndex != null) return;
-            pakIndex = PakIndex.Build(cfg, Console.Error.WriteLine);
+            // a 1.9.57 install: every bundle in the containers is listed, unpacked on first use
+            pakIndex = PakIndex.Build(cfg, Console.Error.WriteLine, CodmVfs.HasContainers(cfg) ? EnsureVfs() : null);
         }
 
         private static void EnsureWwise()
@@ -251,27 +328,8 @@ namespace CodmCli
             EnsureIndex();
             if (withBanks) EnsureWwise();
             if (withBanks)
-                wwiseIndex.LoadNames(cfg, WeaponTokens(pakIndex), Console.Error.WriteLine);
+                wwiseIndex.LoadNames(cfg, WeaponCatalog.WeaponTokens(pakIndex), Console.Error.WriteLine);
             catalog = WeaponCatalog.Build(pakIndex, withBanks ? wwiseIndex : null, WeaponClassMap.Load(cfg));
-        }
-
-        /// <summary>Weapon names and ids from the pak names, the tokens that can appear in Wwise event names.</summary>
-        private static IEnumerable<string> WeaponTokens(PakIndex index)
-        {
-            var rx = new System.Text.RegularExpressions.Regex(@"^cod_models/weapons/(mainweapon|meleeweapon|throwweapon|assiweapon|specialweapon)/[a-z]+_(\d+)_([a-z0-9_]+?)(/.*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var paths = index.Entries.Select(e => e.Name.Path);
-            // a 1.9.57 install: the containers know every module bundle, the unpacked folder only a few
-            if (CodmVfs.DefaultFolders(cfg).Any(Directory.Exists) || (cfg.VfsFolders != null && cfg.VfsFolders.Count > 0))
-                paths = paths.Concat(EnsureVfs().Entries.Where(e => e.Name != null).Select(e => e.Name.Path));
-            foreach (var path in paths)
-            {
-                var m = rx.Match(path);
-                if (!m.Success) continue;
-                set.Add(m.Groups[3].Value.ToLowerInvariant());
-                set.Add(WeaponCatalog.NormalizeName(m.Groups[3].Value));
-            }
-            return set;
         }
 
         private static ContainerIndex EnsureContainerIndex(bool rebuild = false)
@@ -307,6 +365,9 @@ namespace CodmCli
                 Console.Error.WriteLine($"  {w.Folder}");
             return null;
         }
+
+        /// <summary>Marker for a pak that is still in the 1.9.57 containers (unpacked when something loads it).</summary>
+        private static string Packed(PakEntry p) => p.IsPacked ? "  (packed)" : "";
 
         private static string Size(long bytes)
         {
@@ -362,7 +423,8 @@ namespace CodmCli
         private static int CmdIndex(Options o)
         {
             EnsureIndex();
-            Console.WriteLine($"{pakIndex.Entries.Count} paks");
+            var packed = pakIndex.Vfs != null ? pakIndex.Entries.Count(e => e.IsPacked) : 0;
+            Console.WriteLine($"{pakIndex.Entries.Count} paks" + (pakIndex.Vfs != null ? $" ({packed} still in the game containers, unpacked on first use to {cfg.UnpackRootPath})" : ""));
             foreach (var kv in pakIndex.CountByTopFolder(2).OrderByDescending(kv => kv.Value).Take(o.GetInt("top", 40)))
                 Console.WriteLine($"{kv.Value,7}  {kv.Key}");
             var tsv = o.Get("tsv");
@@ -380,7 +442,7 @@ namespace CodmCli
             EnsureIndex();
             var hits = pakIndex.Search(string.Join(" ", o.Positional)).ToList();
             foreach (var e in hits.Take(o.GetInt("max", 200)))
-                Console.WriteLine($"{e.Source,-9} {Size(e.Size),9}  {e.Name.Decoded}");
+                Console.WriteLine($"{e.Source,-9} {Size(e.Size),9}  {e.Name.Decoded}{Packed(e)}");
             Console.WriteLine($"{hits.Count} match(es)");
             return 0;
         }
@@ -426,25 +488,25 @@ namespace CodmCli
                 Console.WriteLine($"  skins       : {w.Skins.Count}  ({string.Join(", ", w.Skins.Take(8).Select(s => s.Folder))}{(w.Skins.Count > 8 ? ", ..." : "")})");
             Console.WriteLine($"  paks ({w.Paks.Count}):");
             foreach (var p in w.Paks.OrderBy(p => p.Name.Decoded))
-                Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+                Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}{Packed(p)}");
             foreach (var a in w.Ancestors())
             {
                 Console.WriteLine($"  base paks of {a.Folder} ({a.Paks.Count}):");
                 foreach (var p in a.Paks.OrderBy(p => p.Name.Decoded))
-                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}{Packed(p)}");
             }
             var comps = w.AllComponents();
             if (comps.Count > 0)
             {
                 Console.WriteLine($"  components ({comps.Count}, run 'codm components' once to link magazines/barrels/stocks by container path):");
                 foreach (var p in comps.OrderBy(p => p.Name.Decoded))
-                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}{Packed(p)}");
             }
             if (w.Effects.Count > 0)
             {
                 Console.WriteLine($"  effects ({w.Effects.Count}):");
                 foreach (var p in w.Effects.OrderBy(p => p.Name.Decoded))
-                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+                    Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}{Packed(p)}");
             }
             if (w.Banks.Count > 0)
             {
@@ -507,7 +569,7 @@ namespace CodmCli
             var am = new AssetsManager();
             try
             {
-                am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
+                am.LoadFiles(PakEntry.EnsureOnDisk(paks, Console.Error.WriteLine));
                 if (!o.Has("no-deps"))
                     DependencyResolver.Resolve(am, EnsureCabIndex(), cfg, Console.WriteLine, maxPaks: o.GetInt("max-deps", 60));
                 var own = new HashSet<string>(paks.Select(p => p.FullPath), StringComparer.OrdinalIgnoreCase);
@@ -578,7 +640,7 @@ namespace CodmCli
             var am = new AssetsManager();
             try
             {
-                am.LoadFiles(paks.Select(p => p.FullPath).ToArray());
+                am.LoadFiles(PakEntry.EnsureOnDisk(paks, Console.Error.WriteLine));
                 if (!o.Has("no-deps"))
                     DependencyResolver.Resolve(am, cabs, cfg, Console.Error.WriteLine);
                 var own = new HashSet<string>(paks.Select(p => p.FullPath), StringComparer.OrdinalIgnoreCase);
@@ -647,7 +709,7 @@ namespace CodmCli
                 var w = ResolveWeapon(o.Positional[0]);
                 if (w == null) return 1;
                 var svc = new CodmExportService(cfg, pakIndex, wwiseIndex, () => cabs);
-                files = svc.SelectPaks(w, new WeaponExportOptions()).Select(p => p.FullPath).ToArray();
+                files = PakEntry.EnsureOnDisk(svc.SelectPaks(w, new WeaponExportOptions()), Console.Error.WriteLine);
             }
             own = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
             var hirc = wwiseIndex.HircObjects(Console.Error.WriteLine);
@@ -774,7 +836,7 @@ namespace CodmCli
             if (c == null) return 1;
             Console.WriteLine($"{c.Folder}  ({c.Paks.Count} pak(s))");
             foreach (var p in c.Paks.OrderBy(p => p.Name.Decoded))
-                Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}");
+                Console.WriteLine($"    {p.Source,-9} {Size(p.Size),9}  {p.Name.Decoded}{Packed(p)}");
             return 0;
         }
 
@@ -805,7 +867,7 @@ namespace CodmCli
         {
             EnsureIndex();
             EnsureWwise();
-            wwiseIndex.LoadNames(cfg, WeaponTokens(pakIndex), Console.Error.WriteLine, o.Has("rebuild"));
+            wwiseIndex.LoadNames(cfg, WeaponCatalog.WeaponTokens(pakIndex), Console.Error.WriteLine, o.Has("rebuild"));
             var identified = wwiseIndex.BankTokens.Where(kv => kv.Value.Count > 0).ToList();
             Console.WriteLine($"{wwiseIndex.Names.Count} names resolved; {identified.Count} of {wwiseIndex.BankTokens.Count} weapon banks identified by name; cache {wwiseIndex.Names.Path}");
             foreach (var kv in identified.OrderBy(kv => kv.Key).Take(o.GetInt("max", 60)))

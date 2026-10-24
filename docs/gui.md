@@ -16,6 +16,14 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 
 ## Weapon browser
 
+On a 1.9.57 config the browser lists every bundle of the game containers, not only what has been
+unpacked: the catalog, base chains, components and banks look as they did for 1.9.55. Rows in **grey**
+are still packed; loading, previewing or exporting unpacks them to `UnpackRoot` first (the log shows each
+one, a few seconds for a weapon) and they stay there for next time. **Unpack checked** writes them
+without loading. After the index is ready, the CAB index (needed to resolve dependencies) and then the
+attachment index are built in the background: the first time on 1.9.57 that reads the headers of all
+22 552 bundles from the containers, about 2.5 minutes, cached after.
+
 **Weapons tab**
 
 - Left: weapons grouped by kind. Bold entries are base weapons (they carry the mesh); their children are
@@ -50,13 +58,15 @@ weapon browser immediately, or `--codm 1648` to open it on a weapon.
 - **Preview mesh**: loads the checked paks (with dependencies when ticked) into the main window and
   selects the most interesting mesh (first-person prefab first, then the biggest LOD0) in the Asset List,
   so the Preview tab shows it.
-- **Show pak in Explorer**, **Copy names** (decoded name + path of the checked rows).
+- **Unpack checked**: write the checked grey rows to the unpack folder without loading them.
+- **Show pak in Explorer** (unpacks a grey row first), **Copy names** (decoded name + path of the checked
+  rows).
 - A **Characters** root at the bottom of the tree lists every skin under `cod_models/avatar`
   (bot and event variants under their sub folder). Selecting one shows its paks; Load, Preview and
   Export work the same way, the export going to `<export root>/characters/<name>/`.
 
 **All paks tab**: search any decoded path (`cod_effects/particles`, `avatar/`, `ui_icon`, a skin name).
-Load or add checked results, or double-click one.
+Load, add or unpack checked results, or double-click one. Grey rows are still in the game containers.
 
 **Sound banks tab**: filter the 2 187 bank names, see a bank's events (with recovered names where
 known and the number of wems each one reaches), where each sound's wem lives, and extract all its wems

@@ -80,7 +80,7 @@ namespace AssetStudio.Codm
             if (toLoad.Count > 0)
             {
                 log?.Invoke($"[Deps] loading {toLoad.Count} pak(s) for referenced assets");
-                am.LoadFiles(toLoad.Select(p => p.FullPath).ToArray());
+                am.LoadFiles(PakEntry.EnsureOnDisk(toLoad, log));
             }
             return toLoad;
         }
@@ -129,7 +129,7 @@ namespace AssetStudio.Codm
                 log?.Invoke($"[Deps] round {round + 1}: {missing.Count} external file(s) referenced, loading {toLoad.Count} pak(s)");
                 foreach (var p in toLoad)
                     log?.Invoke($"[Deps]   + {p.Name.Decoded}");
-                am.LoadFiles(toLoad.Select(p => p.FullPath).ToArray());
+                am.LoadFiles(PakEntry.EnsureOnDisk(toLoad, log));
                 report.Loaded.AddRange(toLoad);
             }
             if (report.Unresolved.Count > 0)

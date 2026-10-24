@@ -1,8 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using AssetStudio;
 using AssetStudio.Codm;
+using AssetStudio.Codm.Vfs;
 using AssetStudio.Codm.Wwise;
 
 namespace AssetStudioGUI
@@ -10,6 +10,8 @@ namespace AssetStudioGUI
     /// <summary>
     /// Process-wide CODM state for the GUI: the config and the (lazily built) pak index,
     /// Wwise index and weapon catalog. Built once in the background; reopening the browser reuses it.
+    /// On a 1.9.57 install the containers are opened next to the pak index, which then lists every
+    /// bundle; those not unpacked yet are written to the unpack folder when loaded or exported.
     /// </summary>
     internal static class CodmSession
     {
@@ -19,10 +21,16 @@ namespace AssetStudioGUI
         public static WeaponCatalog Catalog { get; private set; }
         public static CabIndex Cabs { get; private set; }
         public static CharacterCatalog Characters { get; private set; }
+        /// <summary>The 1.9.57 containers of the current config; null for a loose-pak install.</summary>
+        public static CodmVfs Vfs { get; private set; }
         public static bool IsLoaded => Catalog != null;
 
         private static Task loadTask;
         private static readonly object gate = new object();
+        // one lock per index: building the attachment index (minutes) must not hold up dependency loading
+        private static readonly object cabGate = new object();
+        private static readonly object containerGate = new object();
+        private static PakIndex cabsBuiltFor, containersBuiltFor;
 
         public static CodmConfig LoadConfig()
         {
@@ -58,6 +66,7 @@ namespace AssetStudioGUI
                     Wwise = null;
                     Catalog = null;
                     Cabs = null;
+                    Containers = null;
                     loadTask = null;
                 }
                 if (loadTask == null)
@@ -65,18 +74,28 @@ namespace AssetStudioGUI
                     loadTask = Task.Run(() =>
                     {
                         LoadConfig();
+                        CodmVfs vfs = null;
+                        if (CodmVfs.HasContainers(Config))
+                        {
+                            progress?.Invoke("CODM: opening the game containers (1.9.57)...");
+                            vfs = CodmVfs.Open(Config, progress);
+                        }
                         progress?.Invoke("CODM: indexing paks...");
-                        var index = PakIndex.Build(Config, progress);
+                        var index = PakIndex.Build(Config, progress, vfs);
                         progress?.Invoke("CODM: indexing sound banks...");
                         var wwise = WwiseIndex.Build(Config, progress);
                         progress?.Invoke("CODM: resolving Wwise names...");
-                        wwise.LoadNames(Config, WeaponTokens(index), progress);
+                        wwise.LoadNames(Config, WeaponCatalog.WeaponTokens(index), progress);
                         progress?.Invoke("CODM: building weapon catalog...");
                         var catalog = WeaponCatalog.Build(index, wwise, WeaponClassMap.Load(Config));
                         Characters = CharacterCatalog.Build(index);
+                        var previous = Vfs;
+                        Vfs = vfs;
                         Index = index;
                         Wwise = wwise;
                         Catalog = catalog;
+                        if (previous != null && previous != vfs)
+                            previous.Dispose();
                         progress?.Invoke($"CODM index ready: {index.Entries.Count} paks, {catalog.Weapons.Count} weapons, {wwise.Banks.Count} bank files");
                     });
                 }
@@ -84,44 +103,41 @@ namespace AssetStudioGUI
             }
         }
 
-        private static IEnumerable<string> WeaponTokens(PakIndex index)
-        {
-            var rx = new System.Text.RegularExpressions.Regex(@"^cod_models/weapons/(mainweapon|meleeweapon|throwweapon|assiweapon|specialweapon)/[a-z]+_(\d+)_([a-z0-9_]+?)(/.*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var e in index.Entries)
-            {
-                var m = rx.Match(e.Name.Path);
-                if (!m.Success) continue;
-                set.Add(m.Groups[3].Value.ToLowerInvariant());
-                set.Add(WeaponCatalog.NormalizeName(m.Groups[3].Value));
-            }
-            return set;
-        }
-
         public static ContainerIndex Containers { get; private set; }
 
         /// <summary>Container-path index of the attachment bundles; links magazines, barrels, stocks... to weapons.</summary>
         public static ContainerIndex EnsureContainerIndex(Action<string> progress = null, bool rebuild = false)
         {
-            lock (gate)
+            lock (containerGate)
             {
-                if (Containers == null || rebuild)
+                var index = Index;
+                var catalog = Catalog;
+                if (Containers == null || containersBuiltFor != index || rebuild)
                 {
-                    Containers = ContainerIndex.Build(Catalog.ComponentPaks, Config, progress, rebuild);
-                    var linked = Catalog.LinkComponentsByContainers(Containers);
+                    var containers = ContainerIndex.Build(catalog.ComponentPaks, Config, progress, rebuild);
+                    var linked = catalog.LinkComponentsByContainers(containers);
                     progress?.Invoke($"components: {linked} attachment links from container paths");
+                    Containers = containers;
+                    containersBuiltFor = index;
                 }
                 return Containers;
             }
         }
 
-        /// <summary>CAB -> pak index for dependency loading; built on first use (a minute the first time, cached after).</summary>
+        /// <summary>CAB -> pak index for dependency loading; built on first use (minutes the first time, cached after).</summary>
         public static CabIndex EnsureCabIndex(Action<string> progress = null)
         {
-            lock (gate)
+            var cabs = Cabs;
+            if (cabs != null && cabsBuiltFor == Index)
+                return cabs;
+            lock (cabGate)
             {
-                if (Cabs == null)
-                    Cabs = CabIndex.Build(Index, Config, progress);
+                var index = Index;
+                if (Cabs == null || cabsBuiltFor != index)
+                {
+                    Cabs = CabIndex.Build(index, Config, progress);
+                    cabsBuiltFor = index;
+                }
                 return Cabs;
             }
         }

@@ -16,6 +16,14 @@ namespace AssetStudio.Codm.Vfs
         public int Ordinal { get; internal set; }
         /// <summary>Global logical page: part = page / pagesPerPart, the remainder goes through the part's page map.</summary>
         public uint LogicalPage { get; internal set; }
+        /// <summary>Pages the compressed entry occupies (low 16 bits of the x word); they may continue in the next part.</summary>
+        public int PageCount { get; internal set; }
+        /// <summary>
+        /// Low 16 bits of the second tuple word are 1 (the block table then carries extra run data): the
+        /// entry's pages are contiguous in the part file from its first page, while the page map sends its
+        /// later logical pages elsewhere. Otherwise each logical page goes through the page map.
+        /// </summary>
+        public bool ContiguousPages { get; internal set; }
         public int BlockCount { get; internal set; }
         public int LastBlockSize { get; internal set; }
         /// <summary>End offsets (relative to the entry's first data byte) of blocks 0..n-2; the last block ends where its LZ4 stream ends.</summary>
@@ -149,6 +157,8 @@ namespace AssetStudio.Codm.Vfs
                     for (var i = 0; i < n; i++)
                         e.BlockEnds[i] = U32(d, toff + 8 + 4 * i);
                     var tuple = toff + 8 + 4 * n;
+                    e.PageCount = (int)(U32(d, tuple) & 0xFFFF);
+                    e.ContiguousPages = (U32(d, tuple + 4) & 0xFFFF) == 1;
                     e.LogicalPage = U32(d, tuple + 8);
                     e.Hash = new byte[16];
                     Buffer.BlockCopy(d, toff + tsize - 16, e.Hash, 0, 16);
@@ -200,32 +210,60 @@ namespace AssetStudio.Codm.Vfs
             }
         }
 
+        /// <summary>Byte offset of the entry's first data page inside its part file (opens the part's page map).</summary>
+        public long DataOffset(QtsEntry e)
+        {
+            var part = OpenPart(e.Part);
+            return part.DataStart + (long)part.Map[(int)(e.LogicalPage % (uint)PagesPerPart)] * PageSize;
+        }
+
         /// <summary>Decompress a whole entry.</summary>
-        public byte[] Read(QtsEntry e)
+        public byte[] Read(QtsEntry e) => Read(e, long.MaxValue);
+
+        /// <summary>
+        /// Decompress the first blocks of an entry, enough for <paramref name="maxBytes"/> (whole 16 KB blocks),
+        /// or the whole entry when it is not longer. Only the compressed bytes of those blocks are read.
+        /// </summary>
+        public byte[] Read(QtsEntry e, long maxBytes)
         {
             if (e.Size == 0) return new byte[0];
-            var part = OpenPart(e.Part);
-            var local = (int)(e.LogicalPage % (uint)PagesPerPart);
-            var phys = part.Map[local];
-            var offset = part.DataStart + (long)phys * PageSize;
-            var bound = (e.BlockEnds.Length > 0 ? (long)e.BlockEnds[e.BlockEnds.Length - 1] : 0) + BlockSize + PageSize;
-            var toRead = (int)Math.Min(bound, part.Length - offset);
-            var src = new byte[toRead];
-            lock (gate)
+            var blocks = maxBytes >= e.Size ? e.BlockCount : (int)Math.Min(e.BlockCount, (maxBytes + BlockSize - 1) / BlockSize);
+            var whole = blocks >= e.BlockCount;
+            var count = whole ? (long)e.PageCount * PageSize : e.BlockEnds[blocks - 1];
+            try
             {
-                part.Stream.Position = offset;
-                ReadExactly(part.Stream, src, 0, toRead);
+                return Decode(e, ReadPages(e, count, e.ContiguousPages), blocks, whole);
             }
-            var dst = new byte[e.Size];
+            catch (Exception first) when (e.PageCount > 1 && !(first is FileNotFoundException))
+            {
+                // the layout flag is an observation, not a documented rule: try the other layout before giving up
+                try
+                {
+                    return Decode(e, ReadPages(e, count, !e.ContiguousPages), blocks, whole);
+                }
+                catch (Exception)
+                {
+                    throw first;
+                }
+            }
+        }
+
+        /// <summary>LZ4-decode the first <paramref name="blocks"/> blocks of an entry from its compressed pages.</summary>
+        private byte[] Decode(QtsEntry e, byte[] src, int blocks, bool whole)
+        {
+            var dst = new byte[whole ? e.Size : (long)blocks * BlockSize];
             var op = 0;
             var ip = 0;
-            for (var b = 0; b < e.BlockCount; b++)
+            for (var b = 0; b < blocks; b++)
             {
                 var raw = Math.Min(BlockSize, dst.Length - op);
                 if (b < e.BlockEnds.Length)
                 {
                     var end = (int)e.BlockEnds[b];
                     var used = Lz4Block.Decode(src, ip, Math.Min(end, src.Length), dst, op, op + raw);
+                    // a block that does not end exactly where the table says was read from the wrong place
+                    if (ip + used != end)
+                        throw new InvalidDataException($"{Label}: {e.Name}: block {b} ends at {ip + used}, the block table says {end}");
                     ip = end;
                 }
                 else
@@ -237,6 +275,63 @@ namespace AssetStudio.Codm.Vfs
             if (op != dst.Length)
                 throw new InvalidDataException($"{Label}: {e.Name}: decoded {op} of {dst.Length} bytes");
             return dst;
+        }
+
+        /// <summary>
+        /// The first <paramref name="count"/> bytes of an entry's pages. <paramref name="contiguous"/>: one run in
+        /// the part file from the first page's physical location (see <see cref="QtsEntry.ContiguousPages"/>).
+        /// Otherwise the logical pages from <see cref="QtsEntry.LogicalPage"/> each go through their part's page
+        /// map: physical pages need not be consecutive, and an entry can run past the last page of a part
+        /// into the next one.
+        /// </summary>
+        private byte[] ReadPages(QtsEntry e, long count, bool contiguous)
+        {
+            var src = new byte[count];
+            if (contiguous)
+            {
+                var part = OpenPart(e.Part);
+                ReadAt(part, DataOffset(e), src, 0, (int)count, e, true);
+                return src;
+            }
+            var got = 0;
+            var page = (long)e.LogicalPage;
+            while (got < count)
+            {
+                var k = (int)(page / PagesPerPart);
+                if (k >= PartCount)
+                    throw new InvalidDataException($"{Label}: {e.Name}: pages run past the last part");
+                var part = OpenPart(k);
+                var local = (int)(page % PagesPerPart);
+                var phys = part.Map[local];
+                var run = 1; // consecutive logical pages on consecutive physical pages: one read
+                while (local + run < PagesPerPart && part.Map[local + run] == phys + run && (long)run * PageSize < count - got)
+                    run++;
+                var n = (int)Math.Min((long)run * PageSize, count - got);
+                ReadAt(part, part.DataStart + (long)phys * PageSize, src, got, n, e, got + n == count);
+                got += n;
+                page += run;
+            }
+            return src;
+        }
+
+        /// <summary>
+        /// Read pages of a part. Part files end right after the last used byte, so the final page of an entry
+        /// may be short when <paramref name="last"/>; the missing tail stays zero (the decoder stops at the raw size).
+        /// </summary>
+        private void ReadAt(Part part, long offset, byte[] dst, int dstOff, int count, QtsEntry e, bool last)
+        {
+            var available = part.Length - offset;
+            if (available < count)
+            {
+                if (!last || count - available >= PageSize)
+                    throw new InvalidDataException($"{Label}: {e.Name}: pages run past the end of part file ({offset + count} > {part.Length})");
+                count = (int)Math.Max(0, available);
+            }
+            lock (gate)
+            {
+                part.Stream.Position = offset;
+                ReadExactly(part.Stream, dst, dstOff, count);
+            }
         }
 
         public void Dispose()

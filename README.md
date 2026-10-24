@@ -7,9 +7,9 @@ cosmetics, animations, textures and sounds for porting into other games and mods
 This repository is never published. `codm.config.json` points at the **1.9.55 (patch 55)** game files,
 since 2026-10-24 archived at `Q:\CODMGameApps_Archive\CN\emulator\Extract\CODM`, which the whole
 pipeline reads directly. The live install at `Q:\CODMGameApps` is 1.9.57, whose bundles sit in QtsVFS
-containers: `codm.config.1957.json` and `codm unpack` extract them as loose paks the same pipeline
-reads (see [docs/codm-containers.md](docs/codm-containers.md)). **The game must never be launched,
-patched or updated from this machine; the tooling only reads files.**
+containers: with `codm.config.1957.json` every bundle in them is listed, and each one is unpacked as a
+stock loose pak the moment something loads or exports it (see [docs/codm-containers.md](docs/codm-containers.md)).
+**The game must never be launched, patched or updated from this machine; the tooling only reads files.**
 
 ## What it does
 
@@ -26,7 +26,7 @@ patched or updated from this machine; the tooling only reads files.**
 | Characters | every skin under `cod_models/avatar` (body, head, hair, first-person arms as separate prefabs), same Cast + textures export |
 | Effects | FX bundles are linked by name; their materials' textures (resolved through the shared texture bundles) and an object list are exported |
 | Game config tables (`DataTableBytes`) | encrypted, not decoded (see docs) |
-| 1.9.57 containers (QtsVFS) | read: download pack, patch pack, base pack; `codm unpack` writes stock bundles the rest of the tooling reads (see [docs/codm-containers.md](docs/codm-containers.md)) |
+| 1.9.57 containers (QtsVFS) | read: download pack, patch pack, base pack; browser, catalog and export list every bundle and unpack on demand, `codm unpack` in batch (see [docs/codm-containers.md](docs/codm-containers.md)); 174 of 91 313 Qts entries (0.2 %, entries with a run table) use a page layout not understood yet |
 
 ## Layout
 
@@ -80,8 +80,9 @@ so Debug and Release builds share it:
 ```
 
 Two configs live at the repository root: `codm.config.json` (the 1.9.55 archive, loose paks) and
-`codm.config.1957.json` (the live 1.9.57 install: its `PakFolders` are the `unpack-1957` output folders
-of `codm unpack`, plus its own `cache-1957` and `exports-1957`). The CLI takes `--config <file>`, the
+`codm.config.1957.json` (the live 1.9.57 install: the containers are found under its `GameRoot`, bundles
+are unpacked on demand into `unpack-1957`, which its `PakFolders` also list; plus its own `cache-1957`
+and `exports-1957`). The CLI takes `--config <file>`, the
 GUI has **CODM > Switch config...** and remembers the choice. Configs for different game versions must
 not share `CacheDir`.
 
@@ -94,7 +95,8 @@ Two more files live next to the config:
   well-known weapons; this file overrides it. The class picks the `wpn_<class>` bank for the base weapon
   sounds (`codm class <weapon> <class>` or the combo box in the browser).
 - `<CacheDir>/cab-index.json`: which pak contains which serialized file (CAB). Built on first use, about five
-  minutes for 17 000 paks, then reused. Needed to load the bundles a weapon references.
+  minutes for 17 000 paks (1.9.57: 2.5 minutes for 22 666 bundles read from the containers), then reused.
+  Needed to load the bundles a weapon references.
 - `<CacheDir>/wwise-names.json` and `<CacheDir>/wwise-bank-tokens.json`: Wwise event names recovered by hashing
   candidate names (FNV-1) and the weapon each bank belongs to. Built on first use (about five minutes).
 - `<CacheDir>/container-index.json`: asset paths inside the 2 000 attachment bundles, used to link magazines,

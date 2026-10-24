@@ -30,19 +30,35 @@ stored lower case: `dynamic/module/<module>!<ver>!<tag>!<ciphered path>.pak` for
 decodes to `forcedownload`), `dynamic/split/<md5>.cpak` or `split/<md5>.cpak` for chunks.
 
 **Block table**: `u16 block count, u16 last block raw size, u32 0, u32 end offsets of blocks 0..n-2
-(relative to the entry's first data byte), u32 x re-encoded, u32 P << 16, u32 Q`, optionally more
-values (a second tuple and flag bytes on some entries), and a 16-byte hash at the end. Only `Q` matters
-for reading: it is the entry's global logical page.
+(relative to the entry's first data byte), u32 x, u32 w, u32 Q`, optionally a run table (below), and a
+16-byte hash at the end (not the md5 of the decoded entry). `Q` is the entry's global logical page; the low
+16 bits of `x` are the number of pages the compressed entry occupies (holds for all 91 313 entries of both
+packs; the high 16 bits are the record's `x` & 0xFFF); the low 16 bits of `w` are 1 when a run table follows.
 
 **Parts** `AssetBundle_<k>.pak`: 32-byte header (`u32 28, u32 1001, u32 20201112, u32 stamp, u32 4096,
 u32 128000, u32 32, u32 128000`), 128 000 flag bytes, a page map of 128 000 u32 (logical page ->
 physical data page), then 128 000 data pages of 4 KB.
 
-**Location rule**: `part = Q / 128000`, `logical = Q % 128000`, `physical = pageMap[logical]`, data at
-`32 + 128000 + 512000 + physical * 4096`. An entry is its LZ4 blocks back to back (16 KB raw each,
-the last one shorter); the block table gives the compressed sizes of all but the last block, which is
-decoded until the raw size is reached (`Lz4Block`). The record timestamp, `x` and `P` are not needed.
-Verified on about 150 entries of both packs. `AssetBundle_Merge.pak` is a copy of the index;
+**Location rule**: page `p` of an entry is logical page `Q + p`: `part = (Q + p) / 128000`, `logical =
+(Q + p) % 128000`, `physical = pageMap[logical]` of that part, data at `32 + 128000 + 512000 + physical *
+4096`. Physical pages of consecutive logical pages are usually consecutive but need not be, and an entry
+can run past the last page of a part into the next part (95 entries do). Part files end right after the
+last used byte, so the final page may be short. An entry is its LZ4 blocks back to back (16 KB raw each,
+the last one shorter); the block table gives the end offsets of all but the last block, which is decoded
+until the raw size is reached (`Lz4Block`). Every other block must end exactly at its table offset, which
+`QtsPack` checks: data read from the wrong place fails that test.
+
+**Run table** (entries with `w & 0xFFFF == 1`, 586 of 91 313): `u32 run count`, one byte per page giving
+the page's run (0 = the entry's own pages), padded to 4 bytes, then one u32 per run above 0. Example
+`split/ff22a107...cpak`, 26 pages: runs `0×7, 1×2, 2×13, 3×1, 0×3`, values 1803, 2138, 2158; the run
+lengths (10, 2, 13, 1) equal the runs of consecutive physical pages in its page map. For most of these
+entries the pages are simply contiguous in the part file from the first page's physical location (the
+page map sends the later logical pages elsewhere), and that is how `QtsPack` reads them, falling back to
+the page-map walk when the block ends do not fit. A few (3 in the patch pack, 171 in the download pack,
+see `codm vfs-check`) fit neither layout: the trailing values are not ordinals of the same pack, so the
+run table is not understood yet. The record timestamp and the high half of `w` are not needed.
+
+`AssetBundle_Merge.pak` is a copy of the index;
 `QtcLocalFile.pak`, `DynamicBaseDB.pak` and `puffer_res.eifs` are other databases of the same family
 (`xx xx 34 01`) listing audio and video paths in plain text.
 
@@ -102,13 +118,38 @@ embeds every chunk referenced from the data section (`qtc:/.../<md5>.cpak`) as a
 re-emits an uncompressed UnityFS. `.resS` nodes pass through. The unchanged AssetStudio reader then
 loads the result; `SerializedFile` itself only learned to skip the string list.
 
+## On-demand loading
+
+When the config's game root holds containers, `PakIndex.Build` lists every bundle of the three stores
+(22 666 on 1.9.57) as a `PakEntry` whose `Container` is the `VfsEntry` and whose `FullPath` is where it
+is unpacked: `<UnpackRoot>/<puffer|extract|streaming>/<file name>`. Files already there (from `codm
+unpack` or an earlier load) are matched to their entry. Catalog, browser and export see one index as
+with loose paks; `PakEntry.EnsureOnDisk` writes a missing file (normalized, through a temporary file)
+right before it is loaded, so only what gets loaded or exported is ever unpacked. A pak that cannot be
+unpacked is logged and skipped, like an unreadable file. Several paks are unpacked in storage order.
+
+The indexes read the containers directly instead of unpacking: the CAB index decodes only the first
+16 KB block of each bundle (the directory sits right after the header), all 22 552 in one sweep in
+storage order (pack, part, offset), 2.5 minutes from the hard disk, cached in `cab-index.json` with the
+entry's container size and hash stamp as its identity. The attachment index normalizes the 2 466
+component bundles in memory without their texture streams. Neither writes paks.
+
+An unpacked file is trusted as long as it exists. After a game patch, `codm vfs-check --unpacked`
+compares every unpacked file with a fresh read of its entry; delete the ones that differ (or the whole
+unpack folder) and they are unpacked again on next use.
+
 ## Command line
 
 ```
 codm --config codm.config.1957.json vfs                    packs, entry counts, offset cache state
 codm --config codm.config.1957.json vfs-index [--rebuild]  build the base pack offset cache
+codm --config codm.config.1957.json vfs-check [--source s] [--bundles] [--max n]   read every entry, report failures
+codm --config codm.config.1957.json vfs-check --unpacked   compare the unpack folder with the containers
 codm --config codm.config.1957.json unpack <text...> [--list] [--source puffer|extract|streaming] [--raw] [--chunks] [--max n] [--out dir]
 ```
+
+`unpack` stays the batch path (and the only one for `--raw` and chunks); everything else unpacks on
+demand.
 
 `unpack` matches the text against decoded names (`mainweapon_2537_locusrailgun`, `avatar/c_f_alias`,
 `weapons/animations/1p`) and writes `<UnpackRoot>/<source>/<FILENAME>.PAK`, the file name being the

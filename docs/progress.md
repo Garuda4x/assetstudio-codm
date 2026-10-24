@@ -238,6 +238,63 @@ nowhere (it used to fall back to built-in defaults silently, which re-walked the
 cache next to the exe). [handoff-1957.md](handoff-1957.md) is the entry point for the next session,
 with the recommended on-demand design for browsing the containers from the GUI.
 
+## 2026-10-24, evening: 1.9.57 in the browser without unpacking first
+
+**Built** (the on-demand design of [handoff-1957.md](handoff-1957.md) section 5). On a config whose game
+root holds containers, `PakIndex.Build` lists all 22 666 container bundles as `PakEntry` rows
+(`Container` = the `VfsEntry`, `FullPath` = `<UnpackRoot>/<source>/<file>`); the 114 files unpacked
+earlier are matched to their entries. `PakEntry.EnsureOnDisk` normalizes and writes a missing file
+(temporary file + move) right before `AssetsManager.LoadFiles`, at every load site: export service
+(weapon set, FX), dependency resolver, browser load/preview, CLI `anims`/`events`/`mbscan`. A pak that
+fails to unpack is logged and skipped. CAB index: header-only reads (first 16 KB block) of the packed
+bundles in storage order, 22 552 in 145 s from the hard disk (`Q:` is a 7200 rpm disk, random reads
+would have been several times slower), cache identity = container size + hash stamp. Attachment index:
+component bundles normalized in memory without texture streams. GUI: `CodmSession` opens the containers
+next to the index, one lock per index (the attachment build no longer blocks dependency loading), CAB
+index then attachment index built in the background after the browser loads; grey rows for packed
+entries, **Unpack checked**, **Show in Explorer** unpacks first. Wwise weapon tokens come from the index
+in CLI and GUI alike (`WeaponCatalog.WeaponTokens`; the index now holds every container name). New CLI:
+`codm vfs-check [--source s] [--bundles]` and `vfs-check --unpacked`.
+
+**Found: Qts page layout.** The location rule only held for entries whose logical pages map to
+consecutive physical pages inside one part. The low 16 bits of the block table's `x` word are the page
+count (all 91 313 entries). 95 entries run past the last page of a part into the next one, 586 carry a
+run table (`w & 0xFFFF == 1`). Entries without a run table are read logical page by logical page through
+the page maps (into the next part when needed); entries with one are, for almost all of them, contiguous
+in the part file from their first physical page. Part files end mid-page (the last page is short). The
+reader now checks that every block but the last ends exactly at its table offset, so a wrong layout fails
+loudly instead of producing garbage, and tries the other layout before giving up. Before: the patch
+pack's `camouflage_character` (a dependency of the Locus export) failed on one chunk; `vfs-check` found
+48 failing patch-pack entries with the page-map walk alone, 3 with the final rules. Download pack: 88 293
+of 88 464 entries decode (66.7 GB in 25 minutes); the 171 failures (169 chunks and 2 bundles,
+`component/mag/39.1` and `assiweapon_45030_mw11antihero`) all carry a run table. The few left carry run
+tables that fit neither layout; their trailing values are not ordinals of the same pack (open).
+
+**Verified.** `codm --config codm.config.1957.json export 2537`: 6 models (36 + 34 first-person clips),
+101 textures, banks 105/105p3, 422 wems, 0 warnings, 0 unresolved references (124 before: the old CAB
+index only knew the unpacked files). Dependency resolution now sees all 22 666 bundles and loads 60
+dependency paks (the limit), as the 1.9.55 exports of comparable weapons did (`mainweapon_487`,
+`mainweapon_200`: 60 each); 45 of them were unpacked on the fly.
+
+**GUI**: the Release build, driven through its real menu and dialogs (Win32 messages and MSAA from a
+script; the managed UI Automation client only sees panes on this machine), started on the 1.9.55 config
+(17 674 paks, 1 051 weapons); CODM > Switch config... to `codm.config.1957.json` re-indexed to 22 666
+paks, 2 733 weapons and 5 233 bank files in under 3 minutes. AK117 Bengal (`mainweapon_173`, 4 skin and
+41 base paks, none unpacked before) with **Load checked (replace)** and dependencies: 75 s, the 45 paks
+and 29 dependencies unpacked on the fly, among them the patch pack's `camouflage_character` (702 chunks,
+270 MB, unreadable before the page-layout fix); one dependency copy (`personalshow@4` in the download
+pack, a run-table entry) was skipped with a log line. Second run, AK117 SD (`mainweapon_207`, base
+already unpacked by the first): the 3 skin paks unpacked, load 30 s, 37 412 nodes in the main window's
+scene hierarchy; the Release build then remembers the 1957 config. `codm vfs-check --unpacked`: all 250
+files in `unpack-1957` (the 114 written by the old reader included) equal a fresh read of their container
+entry. Final `export 2537` with the final build: same numbers and the same file list.
+
+**Dead ends.** The block-table hash is not the md5 of the decoded entry. The run table's trailing
+values are neither ordinals in the same pack's directory nor logical start pages of the runs (global
+or local to the entry's part): reading run `r` from logical page `V[r-1]` breaks exactly where run 1
+begins. All failing download-pack entries carry a run table; plain entries (including the 92 that
+cross a part boundary) all decode.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
@@ -247,4 +304,7 @@ with the recommended on-demand design for browsing the containers from the GUI.
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.
 - Optional: embedded textured mesh preview in the browser; standalone GUI.
-- 1.9.57: GUI front end for unpack (weapon browser over the containers), then a container-aware pak index so unpacking becomes optional; characters and effects through the same path; the 375-entry table in base parts; the game must be closed while reading the live install.
+- 1.9.57: the Qts run tables (174 of 91 313 entries fit no known page layout, `codm vfs-check`);
+  characters and effects through the on-demand path (untested); an automatic stale-unpack check after
+  game patches (today `vfs-check --unpacked`); the 375-entry table in base parts; the game must be
+  closed while reading the live install.

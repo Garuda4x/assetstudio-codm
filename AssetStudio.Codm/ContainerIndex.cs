@@ -57,32 +57,52 @@ namespace AssetStudio.Codm
             var entries = new CacheEntry[list.Count];
             var scanned = 0;
             var reused = 0;
-            System.Threading.Tasks.Parallel.For(0, list.Count, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 4 }, i =>
+            var onDisk = new List<int>();
+            var packed = new List<int>();
+            for (var i = 0; i < list.Count; i++)
             {
                 var pak = list[i];
-                var fi = new FileInfo(pak.FullPath);
-                var mtime = fi.LastWriteTimeUtc.Ticks;
-                if (!rebuild && cached.TryGetValue(pak.FullPath, out var ce) && ce.Size == fi.Length && ce.Mtime == mtime)
+                var (size, stamp) = pak.CacheKey();
+                if (!rebuild && cached.TryGetValue(pak.FullPath, out var ce) && ce.Size == size && ce.Mtime == stamp)
                 {
-                    System.Threading.Interlocked.Increment(ref reused);
+                    entries[i] = ce;
+                    reused++;
                 }
                 else
                 {
-                    ce = new CacheEntry { Path = pak.FullPath, Size = fi.Length, Mtime = mtime };
-                    try
-                    {
-                        ce.Containers = ReadContainers(pak.FullPath);
-                    }
-                    catch (Exception)
-                    {
-                        // unreadable bundle: stays empty
-                    }
-                    var n = System.Threading.Interlocked.Increment(ref scanned);
-                    if (n % 200 == 0)
-                        progress?.Invoke($"container index: {n + reused}/{list.Count} paks");
+                    entries[i] = new CacheEntry { Path = pak.FullPath, Size = size, Mtime = stamp };
+                    (pak.IsPacked ? packed : onDisk).Add(i);
                 }
-                entries[i] = ce;
-            });
+            }
+
+            void Scan(int i)
+            {
+                var pak = list[i];
+                try
+                {
+                    // a bundle still in the containers is normalized in memory (no texture streams needed), not unpacked
+                    entries[i].Containers = pak.IsPacked
+                        ? ReadContainers(pak.FullPath, new MemoryStream(pak.Vfs.ReadBundle(pak.Container, true, embedStreams: false)))
+                        : ReadContainers(pak.FullPath);
+                }
+                catch (Exception)
+                {
+                    // unreadable: stays empty; a file is retried on the next build, a container entry when its stamp changes
+                    if (!pak.IsVirtual)
+                        entries[i].Size = -1;
+                }
+                var n = System.Threading.Interlocked.Increment(ref scanned);
+                if (n % 200 == 0)
+                    progress?.Invoke($"container index: {n + reused}/{list.Count} paks");
+            }
+
+            System.Threading.Tasks.Parallel.ForEach(onDisk, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 4 }, Scan);
+            if (packed.Count > 0)
+            {
+                progress?.Invoke($"container index: reading {packed.Count} attachment bundles from the game containers (once, cached after)...");
+                foreach (var i in list[packed[0]].Vfs.InStorageOrder(packed, k => list[k].Container))
+                    Scan(i);
+            }
             foreach (var e in entries)
                 result.byPak[e.Path] = e.Containers;
 
@@ -91,11 +111,12 @@ namespace AssetStudio.Codm
                 try
                 {
                     // keep entries of paks that were not part of this build
+                    var all = entries.ToList();
                     foreach (var kv in cached)
                         if (!result.byPak.ContainsKey(kv.Key))
-                            entries = entries.Concat(new[] { kv.Value }).ToArray();
+                            all.Add(kv.Value);
                     Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath));
-                    File.WriteAllText(cachePath, JsonConvert.SerializeObject(entries.ToList()));
+                    File.WriteAllText(cachePath, JsonConvert.SerializeObject(all));
                 }
                 catch (Exception ex)
                 {
@@ -106,11 +127,14 @@ namespace AssetStudio.Codm
             return result;
         }
 
-        /// <summary>Container paths of one bundle: only the AssetBundle object is deserialized.</summary>
-        public static List<string> ReadContainers(string pakPath)
+        /// <summary>
+        /// Container paths of one bundle: only the AssetBundle object is deserialized. <paramref name="data"/>
+        /// supplies the bundle bytes when it is not (yet) a file at <paramref name="pakPath"/>.
+        /// </summary>
+        public static List<string> ReadContainers(string pakPath, Stream data = null)
         {
             var result = new List<string>();
-            using (var reader = new FileReader(pakPath))
+            using (var reader = data != null ? new FileReader(pakPath, data) : new FileReader(pakPath))
             {
                 if (reader.FileType != FileType.BundleFile)
                     return result;
