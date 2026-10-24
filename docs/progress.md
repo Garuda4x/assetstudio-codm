@@ -393,6 +393,23 @@ space (same rig, renamed and scaled), arms by the existing IK pipeline. BetterBl
 several armature-bound meshes (it frees each evaluated mesh when toggling the next one's modifier): the
 builder exports a joined copy.
 
+## 2026-10-24, night: camera clips of skins, camera rest at neutral
+
+The DL Q33 Black Noir export had no camera at all: the 1P rig takes its clips from the override
+controller, and camera clips are played by the prefab's `CameraAnimation` component, never listed there.
+The skin's camera clips sit in the base bundle (`mainweapon_200_dl_q33`: AimingBolt, ChangeClip,
+ChangeClip_E, FireBolt and Inspection `_Camera`); only the skin's own `Inspection_camera` was reachable,
+through the same-file fallback, and only in a skin-only export. The export now adds, per action, the
+matching camera clip of the weapon's own bundles (rig's bundle first). Result: `Camera` bone on the 1P
+rig, camera curves on 5 clips (Inspection up to 13 deg, FireBolt 0.4, AimingBolt 0.3; the reload cameras
+are constant, no quantized blocks). The merger log is quiet for rigs nothing merges into.
+
+**Finding: the camera's neutral is 180 deg about Y.** Every keyed camera clip starts there while the
+synthetic bone rested at identity, so clips without camera rotation keys (reloads, Idle) sat 180 deg
+away from the rest: a retarget onto IW4 `tag_camera` would flip on every reload. The bone now rests at
+the first rotation key of the merged clips. `retarget_codm_to_iw4.py` (iw4xTools) assumed rest + 180 deg
+as the neutral, which double-counts with new exports.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event

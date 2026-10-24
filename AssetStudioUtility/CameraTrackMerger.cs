@@ -10,7 +10,8 @@ namespace AssetStudio
     /// Animator root (path hash 0), which has no bone in the rig, so on their own they export as empty
     /// animations. This merges each "_Camera" clip into its partner animation as a track on a
     /// synthetic <c>Camera</c> bone parented to the rig root, so one Cast file carries the weapon,
-    /// the arms and the camera together. Camera clips without a partner keep their own animation,
+    /// the arms and the camera together. The bone rests at the camera's neutral orientation (the first
+    /// rotation key of the merged clips: 180 deg about Y for CODM). Camera clips without a partner keep their own animation,
     /// also on the Camera bone.
     /// </summary>
     public static class CameraTrackMerger
@@ -43,7 +44,8 @@ namespace AssetStudio
 
             var root = imported.RootFrame;
             var camFrame = FindChild(root, CameraBoneName);
-            if (camFrame == null)
+            var created = camFrame == null;
+            if (created)
             {
                 camFrame = new ImportedFrame
                 {
@@ -56,6 +58,7 @@ namespace AssetStudio
             }
             var camPath = camFrame.Path;
 
+            Vector3? neutral = null;
             var merged = 0;
             var standalone = 0;
             var empty = 0;
@@ -75,6 +78,11 @@ namespace AssetStudio
                 track.Translations.AddRange(rootTrack.Translations);
                 track.Rotations.AddRange(rootTrack.Rotations);
                 track.Scalings.AddRange(rootTrack.Scalings);
+                // the camera's resting orientation: CODM camera clips start 180 deg about Y away from
+                // identity; as the bone's rest, clips that key no rotation (a still reload camera) stay
+                // there instead of snapping to identity, and a retarget sync captured at rest lines up
+                if (!neutral.HasValue && track.Rotations.Count > 0)
+                    neutral = track.Rotations[0].value;
 
                 var partnerName = PartnerName(cam.Name);
                 // several clips can share a short name (Fire, Fire_1 ...: knife, karambit, BR variants);
@@ -108,7 +116,11 @@ namespace AssetStudio
             }
             if (merged == 0 && standalone == 0 && camFrame.Count == 0)
                 root.Remove(camFrame); // nothing landed on it: keep the rig unchanged
-            log?.Invoke($"[Camera] {merged} camera clip(s) merged into their animations on bone '{CameraBoneName}', {standalone} standalone, {dropped} without an animated partner on this rig, {empty} empty");
+            else if (created && neutral.HasValue)
+                camFrame.LocalRotation = neutral.Value;
+            // rigs the camera does not belong to (third-person, UI, attachments) stay quiet
+            if (merged > 0 || standalone > 0 || empty > 0)
+                log?.Invoke($"[Camera] {merged} camera clip(s) merged into their animations on bone '{CameraBoneName}', {standalone} standalone, {dropped} without an animated partner on this rig, {empty} empty");
             return merged;
         }
 

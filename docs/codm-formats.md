@@ -196,6 +196,18 @@ in the undecoded CODM dense blob (`streamed curves = 0`, e.g. the knife's `Fire_
 curves and are dropped with a log line; `FireLeft_Camera` / `FireRight_Camera` / `ProneCrawlLT_Camera`
 carry streamed curves and merge.
 
+The prefab's `CameraAnimation` component plays the camera clips, so an override controller never
+lists them; a skin's camera clips usually sit in its base weapon's bundle (the DL Q33 Black Noir uses
+`MainWeapon_200_DL_Q33_1P_M_ChangeClip_Camera`, path ids 9 and 10 in the component, and the base's
+`FireBolt_Camera`, `AimingBolt_Camera`...). The weapon export adds to each rig's clips the camera clip
+of the weapon's own bundles (skin and base chain, the rig's own bundle first) whose short name matches
+one of its actions; the merger pairs them by short name (`FireBolt_Camera` -> `FireBolt`).
+
+The `Camera` bone rests at the camera's neutral orientation, the first rotation key of the merged clips:
+CODM camera clips start 180 deg about Y from identity. Clips that key no camera rotation (the DL Q33's
+reload cameras are 6 constant curves, no rotation) stay at that neutral instead of snapping to identity,
+and a retarget sync captured at rest lines up. Exports before 2026-10-24 rest the bone at identity.
+
 The older `OrphanAnimationClipConverter` path (Export > "EXCEPTION: Orphan/Camera clips") still
 exists for inspecting a camera clip alone.
 

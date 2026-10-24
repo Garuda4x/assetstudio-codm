@@ -276,6 +276,10 @@ namespace AssetStudio.Codm
                     })
                     .ToList();
             var chosen = new HashSet<GameObject>(ordered.Select(c => c.go));
+            var cameraClips = am.assetsFileList.Where(IsOwn)
+                .SelectMany(f => f.Objects.OfType<AnimationClip>().Select(c => (clip: c, file: f)))
+                .Where(c => CameraTrackMerger.IsCameraClipName(c.clip.m_Name))
+                .ToList();
             foreach (var c in candidates)
                 if (!chosen.Contains(c.go))
                     report.SkippedPrefabCopies.Add($"{c.go.m_Name} ({SourceLabel(c.file)}, {c.clips.Length} clips)");
@@ -298,6 +302,7 @@ namespace AssetStudio.Codm
                         log($"[Export] {go.m_Name}: no clips of its own, using the {clips.Length} clip(s) of {donor.go.m_Name}");
                     }
                 }
+                clips = WithCameraClips(clips, file, cameraClips);
                 {
                     var name = UniqueName(usedNames, go.m_Name, SourceLabel(file));
                     try
@@ -429,6 +434,32 @@ namespace AssetStudio.Codm
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// The first-person camera motion is a separate "_Camera" clip per action (FireBolt_Camera), played
+        /// by the prefab's CameraAnimation component, so the controller never lists it; a skin's camera
+        /// clips usually sit in the base weapon's bundle (MainWeapon_200_DL_Q33_1P_M_FireBolt_Camera for
+        /// the Black Noir's FireBolt). Adds, per action of these clips, the camera clip of the weapon's own
+        /// bundles whose short name matches (the rig's own bundle first), for CameraTrackMerger to merge.
+        /// </summary>
+        private static AnimationClip[] WithCameraClips(AnimationClip[] clips, SerializedFile rigFile,
+            List<(AnimationClip clip, SerializedFile file)> cameraClips)
+        {
+            if (clips.Length == 0 || cameraClips.Count == 0)
+                return clips;
+            var actions = new HashSet<string>(clips.Select(c => ModelConverter.ShortAnimationClipName(c.m_Name)), StringComparer.OrdinalIgnoreCase);
+            var extra = cameraClips
+                .Where(c => !clips.Contains(c.clip))
+                .GroupBy(c => ModelConverter.ShortAnimationClipName(CameraTrackMerger.PartnerName(c.clip.m_Name)), StringComparer.OrdinalIgnoreCase)
+                .Where(g => actions.Contains(g.Key))
+                .Select(g => g.OrderBy(c => c.file == rigFile ? 0 : 1).First().clip)
+                .ToList();
+            // a camera clip the controller did list (rare) already covers its action
+            var listed = new HashSet<string>(clips.Where(c => CameraTrackMerger.IsCameraClipName(c.m_Name))
+                .Select(c => ModelConverter.ShortAnimationClipName(CameraTrackMerger.PartnerName(c.m_Name))), StringComparer.OrdinalIgnoreCase);
+            extra.RemoveAll(c => listed.Contains(ModelConverter.ShortAnimationClipName(CameraTrackMerger.PartnerName(c.m_Name))));
+            return extra.Count == 0 ? clips : clips.Concat(extra).ToArray();
         }
 
         private static bool HasMeshInTree(GameObject go)
