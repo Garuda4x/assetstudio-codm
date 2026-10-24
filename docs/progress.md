@@ -347,6 +347,10 @@ Black Noir 1P/UI body, magazine, grip, the base DL Q33 rail, DL Q33 Black stock,
 models, 11 colour maps, no material for the `_H` holo reticle meshes, `SightPupilCircle_Mesh`, a mesh
 named `Rai03_DLQ33_UIi_lod0` and three loose props.
 
+**Texture alpha (checked on request).** PNG export keeps alpha: the DXT5 textures (`_M_trans`, glass,
+camo masks) come out 0-255 with the colour under alpha 0 intact. The Black Noir set is BC7 and opaque in
+the game data itself (254-255); Pillow's BC7 decoder on the raw data gives the same pixels bit for bit.
+
 ## Open items
 
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
