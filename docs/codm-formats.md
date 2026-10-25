@@ -237,6 +237,41 @@ The clips carry Unity `AnimationEvent`s and CoD Mobile keys its weapon audio on 
 listing the events in the weapon's banks whose recovered name fits the function), and the wems of
 directly referenced Wwise events land in `sounds/_from_animation_events/`.
 
+**How the semantic triggers resolve** (worked out on the DL Q33 Black Noir, `mainweapon_72022`, by
+hashing candidate names against every event id of the install). Each trigger plays one Wwise event,
+picked by action name: the skin's own event when its bank has one, else the class bank's. The trigger
+and action names differ (`BoltOpen` -> `boltpull`), so the mapping lives in the encrypted sound config
+and has to be read off per weapon family:
+
+| trigger | event | bank |
+|---|---|---|
+| `PlayRaiseSound` | `play_dlq33blacknoir_raise_1p` (first draw: `raisefirst_1p`) | skin `200g` |
+| `PlayPlantOKSound` (PutDown) | `play_weapon_sniper_down_1p` (likely) | class `wpn_sniper` |
+| `PlayAdsUpSound` / `PlayAdsDownSound` | `play_weapon_sniper_aim_up_1p` / `aim_down_1p` | class |
+| `PlayBoltOpenSound` / `PlayBoltCloseSound` | `play_dlq33blacknoir_boltpull_1p` / `boltrelease_1p` | skin |
+| `PlayReloadStartSound` | `play_dlq33blacknoir_reloadstart_1p` | skin |
+| `PlayClipOutSound` / `PlayClipInSound` | `play_dlq33blacknoir_clipout_1p` / `clipin_1p` | skin |
+| `PlayClipOutSound_E` / `PlayClipInSound_E` | `play_dlq33blacknoir_clipout_e_1p` / `clipin_e_1p` | skin |
+| `PlayReloadEndSound` | `play_weapon_sniper_reload_end_1p` | class |
+| `PlayInspectionSound1` | `play_dlq33blacknoir_inspection_1p` (one 14.9 s track; `stop_` twin) | skin |
+| firing (no trigger) | `play_dlq33blacknoir_fire_1p`, `fire_first_1p`, `fire_sup_1p`, `fire_sup_first_1p` | skin |
+
+- Names: `play_<skin sound name>_<action>_1p` / `_3p` in the skin banks (the skin's name without
+  its `BLP` suffix), `play_weapon_<class>_<action>_1p` / `_3p` / `_3p_br` in the class banks,
+  `play_wpn_<weapon>_fire_1p` in the base weapon's bank (`200.bnk`: the default skin's fire, shell
+  drops). Also in `200g`: `armsettle_1p`, `kill_sfx`, and four events not named yet (two pairs that
+  play byte-identical wavs: 0.74 s and 0.76 s double metal clicks).
+- Fire is layered: the event plays three containers at once (DL Q33 Black Noir: a 4.3 s body, one of
+  6; a 2.0 s / 5.6 s tail, one of 12; a 0.2 s mechanism click, one of 12). The `_first` variants have
+  their own body and no click; `_sup` is the suppressed set.
+- `clipout_1p` also plays a shared event (in 254 banks, 40 wems) switched by surface (switch values
+  `glass`, `grass`, `metal`, `sand`, `snow`, `stone`, `wood`, `ice`, `rubber`, `plastic`, `cloth`,
+  `gravel` and unnamed others): the magazine landing on the ground. `200.bnk` has the same kind of
+  event for the shell drop.
+- FNV-1 tells a name's 3P twin without the name: `_1p` and `_3p` differ in one byte before the last
+  multiply, so `twin = ((((h ^ 0x70) * P^-1) ^ 0x02) * P) ^ 0x70` (P = 16777619). A 1P id whose twin
+  is in the `p3` bank ends in `_1p`; that cuts a search to the part before the suffix.
+
 ## Export
 
 - `.cast` (dtzxporter Cast) is the primary model and animation format: Z-up, model-space vertices,

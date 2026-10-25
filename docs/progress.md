@@ -433,8 +433,26 @@ re-exported from the user's edited gun blend with their material names (`codm_ex
 bone rests checked equal to the animated rig's within 0.00001). The retarget setup saves its sync pose
 as actions on both rigs and no longer replaces an existing output file.
 
+## 2026-10-25: which sounds the animation triggers play
+
+**Finding: the triggers resolve to the skin's own bank, else the class bank.** The DL Q33 Black Noir's
+clips carry only semantic triggers (`PlayClipOutSound`...). Hashing candidate names against all
+401 145 event ids of the install (5 233 bank files) found its skin bank, `200g` / `200gp3`
+(`play_dlq33blacknoir_clipout_1p`, `_boltpull_1p`, `_fire_sup_first_1p`...: 29 of their 43 events
+named), and the rest in `wpn_sniper` (`play_weapon_sniper_aim_up_1p`, `_reload_end_1p`, `_down_1p`).
+Every trigger of the 1P clips now has an event; the table, the naming rules, the fire layers and the
+surface switch are in the format notes. The weapon export had missed `200g` because the bank linking
+does not strip the skin's `BLP` suffix; extracted by hand with `codm wems` into the user's export
+(`sounds/200g`, `200gp3`, `wpn_sniper`), and the recovered names went into the local name cache so
+the folders carry them.
+
 ## Open items
 
+- Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
+  `WwiseNames` the skin actions (`boltpull`, `boltrelease`, `reloadstart`, `raisefirst`, `fire_first`,
+  `fire_sup`, `fire_sup_first`, `clipin_e`, `clipout_e`, `armsettle`, `kill_sfx`) and the class ones
+  (`aim_up`, `aim_down`, `down`, `reload_end`); resolve each trigger in `notetracks.txt` (skin event,
+  else class event). Four `200g` events still unnamed.
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
   name recovery (90 of several thousand ids named).
 - Source of the characters' first-person arms mesh, and of the Beam Saber's (`meleeweapon_59823`).

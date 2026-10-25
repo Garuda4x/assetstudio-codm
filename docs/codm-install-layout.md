@@ -138,6 +138,11 @@ names. See [progress.md](progress.md) for what was tried.
 - 2 187 distinct bank names in 3 819 files (copies per language and quality tree).
 - **Numeric banks** `249.bnk`, `249d.bnk`, `249p3.bnk`, `80a.bnk`: custom sound sets of a weapon
   skin or base weapon, numbered by the real weapon id; letters are variants, `p3` is a third-person set.
+  A letter bank belongs to one skin of that base weapon: `200g` / `200gp3` are the DL Q33 Black Noir's
+  (`mainweapon_72022`, events `play_dlq33blacknoir_*`), and the plain `200` is the base DL Q33's. The
+  skin's events are named after the skin without its `BLP` suffix, which the bank linking does not
+  try yet, so weapon exports miss these banks (`codm wems 200g` extracts one by hand). How animation
+  triggers pick events: [codm-formats.md](codm-formats.md), "Animation events".
 - **Class banks** `wpn_ar`, `wpn_smg`, `wpn_sniper`, `wpn_lmg`, `wpn_shotgun`, `wpn_pistol`,
   `wpn_melee`, `wpn_launcher`: base weapon sounds. Which one a weapon uses is not derivable from the
   files (skin banks borrow handling sounds from several of them), so it comes from the weapon class
