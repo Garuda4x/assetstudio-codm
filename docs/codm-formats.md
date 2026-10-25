@@ -77,6 +77,12 @@ matches the exported PNGs bit for bit, alpha included. PNG export is lossless RG
   (+0.60) and albedo brightness (+0.58), as AO does; a roughness map would anti-correlate with gloss.
   Material floats name no channels (`_AO_Intensity`, `_GlossMapScale`, `_SmoothnessTextureChannel` 0,
   four-colour camo coefficients `_4ColCoef*`). Older character textures put metallic in `_M` R and AO in G.
+- `_M_trans` alpha marks the self-lit parts: on the Katana Meiji, which has both, it correlates 0.86 with the
+  `_E` luminance (78 % of the alpha area glows). The Katana CXB (`meleeweapon_73256`) ships no `_E`: its
+  `_M_trans` alpha (hard 0/255) covers the purple blade band and guard inlays, so they glow in albedo colour;
+  its G marks only the lilac trim. It also has a `_DN` sheet (R, G flat ~127/130, B a mask over the same
+  decor), not used in the port. Not every `_M_trans` is a glow mask: the base katana's alpha covers 66 % of
+  its sheet.
 
 ## Mesh
 
@@ -116,6 +122,14 @@ controllers (CAB `e4a1bcd10ef44bfdb630fd4109881e7d`):
   `Equip.Equip_First` (entered from `Entry`, parameters `FirstGetWeapon` and `FirstGetWeaponType`),
   with clips `Empty_MainWeapon_M_First_Equip`, `_02` and `_03`, plus `FastEquip`. The weapon's
   `..._1P_M_First_Equip` clip (Cronen Squall: 1.20 s) carries `PlayFirstRaiseSound`.
+
+Melee combos (Katana CXB: `Fire1` = MeleeFireDirect, `Fire1Star` = MeleeFire, `Fire1End`, `Fire2`, `Fire2End`,
+`Fire3`; FireJump and the stab clips come from other melee weapons' bundles, SnakeSword and BoxingGlove).
+The clips chain pose to pose: `Fire1` runs idle -> idle (41 frames) and equals `Fire1Star` (14 frames) +
+`Fire1End` (back to idle); `Fire2` starts 55 cm off idle (the controller cross-fades into it), swings in frames
+2-10 and then holds still until frame 39 (only the camera moves); `Fire2End` returns from that hold to idle and
+`Fire3` (the stab) continues from it. Every exported Cast clip ends in 2 padding frames keyed only on static
+channels.
 
 ## AnimationClip
 
@@ -243,6 +257,12 @@ Lotus Flames 3P: body `_0` `Wea`, `_1` `Ball`, `_2` `HW01Glass`; its LODs add th
 (`_lod1_3`, `_lod2_2`); the sight's small submeshes are lens discs and tube on `Glass` (none in 1P); the
 overlay's LOD2 carries a piece LOD0 and LOD1 lack (a flame arc under the barrel).
 
+Melee 3P need not share the 1P orientation. The Katana CXB 3P (`_3P`, `_3p_lod1`, `_3p_lod2`: 4 706 / 2 138 /
+989 faces, one static mesh each, same sheet as the 1P) is the 1P mesh x 4/3, turned by (-11.24, -6.74,
+-89.18) deg XYZ against the IW4 viewmodel's gun space: per-axis size ratios disagree (0.41 / 0.45 / 0.77), and
+vertices paired by UV give the similarity transform with a 0.001 cm residual. Its 1P bind is in knife space
+(the blade along +Z from `Bone_RightHand`, `Bip01` turned 90 deg about Z against the base katana's rig).
+
 ### Scope reticles
 
 A sniper skin's in-scope reticle is not in the weapon's paks but in the shared bundle
@@ -347,6 +367,16 @@ and has to be read off per weapon family:
   `glass`, `grass`, `metal`, `sand`, `snow`, `stone`, `wood`, `ice`, `rubber`, `plastic`, `cloth`,
   `gravel` and unnamed others): the magazine landing on the ground. `200.bnk` has the same kind of
   event for the shell drop.
+- Melee (Katana CXB, skin bank `73256`/`73256p3`, class `wpn_melee`): `PlayRaiseSound` ->
+  `play_katanacxb_raise_1p`, `PlayInspectionSound1` -> `play_katanacxb_inspection_1p` (8.95 s, `stop_`
+  twin), and the combo hits `PlayFirstAttackSound` (Fire1, Fire1Star) / `PlaySecondAttackSound` (Fire2) /
+  `PlayStabSound` (Fire3, frame 6) -> `play_katanacxb_attack_01/02/03_1p` (`_3p` twins in `73256p3`). Each
+  attack event layers a shared 1.18 s swing wav with its own (1.38 / 0.94 / 1.59 s). Also in the bank:
+  `inspection_special_1p` (15.7 s, no exported clip triggers it), `kill_sfx`, and one unnamed 1P/3P pair
+  (`3012684355` / `3046239529`) that plays the shared swing layer alone. `PlayPutDownSound` appears only in
+  the BR clips. The names came from a dictionary search over the bank's ids; a brute-force pass first showed
+  three ids whose collision families differ only in the last character before `_1p` (XOR 1 and 2), the mark
+  of numbered siblings.
 - FNV-1 tells a name's 3P twin without the name: `_1p` and `_3p` differ in one byte before the last
   multiply, so `twin = ((((h ^ 0x70) * P^-1) ^ 0x02) * P) ^ 0x70` (P = 16777619). A 1P id whose twin
   is in the `p3` bank ends in `_1p`; that cuts a search to the part before the suffix.

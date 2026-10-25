@@ -545,7 +545,37 @@ search, sound aliases. Rerun against the Lotus results: assembly, viewmodel blen
 XANIM export matches the user's own BetterBlenderCOD exports. The IW4x material jsons and IWIs (normal
 maps in image.exe's default encoding, as MW2's own and the pilot's) went into the mod.
 
+## 2026-10-25, night: Katana CXB, the first melee weapon through the IW4 pipeline
+
+The user asked for `meleeweapon_73256_katanacxb` (base `meleeweapon_060_katana`) through the port pipeline,
+checking each step for melee. Built in `source\weapons\katana\katanacxb` (the DL Q33 layout); the exporter
+needed no change.
+
+**Findings** (format notes: renderer, third-person models, AnimatorController, animation events).
+One mesh on one sheet, weighted to `Bone01` under `Bone_RightHand`: the swings move `Bone01` in knife space,
+equip/idle/run move `Bone_RightHand`. No scale keys. The sheet has no `_E`; `_M_trans` alpha is the glow mask
+(it matches `_E` on the Katana Meiji, which has both). The combo clips chain pose to pose, so later hits start
+off idle, and `Fire2` holds still for 27 frames. The 3P is the 1P x 4/3 but turned about -89 deg (and a few
+degrees on the other axes), unlike the DL Q33's unrotated 3P. The clips' melee triggers play
+`play_katanacxb_attack_01..03_1p`: named, with `inspection_special`, by a dictionary search over the skin
+bank's ids (they went into the local name cache, so `codm wems` folders carry them); one 1P/3P pair stays
+unnamed.
+
+**Built** (iw4xTools CODM converter, `Weapon\`): `codm_weapon_clip_combine.py` (cut, join and blend-in CODM
+clips before the bake, triggers moved along); `rotation` in the world model spec; `emission_masks` in the
+materials spec (`_E` from a mask channel); `--melee`, `--map`, `--first-entry` for the sound aliases; melee
+triggers in the notetrack table; the gun builder and sheet check accept `MeleeWeapon_` rigs. Results: 2-bone
+gun (`j_gun`, `j_bone01`), 8 anims (idle, pullout, putaway, sprint loop, swipe = Fire1, stab = Fire3 with a
+6-frame blend-in from idle, swipe_2 = Fire2 without its hold + Fire2End, inspect; the blade mesh on CODM within
+0.0004 cm every frame, wrists 0.003), notetracks at the CODM frames, world LOD0/1/2 on the viewmodel within
+0.001 cm, the material (glow on `_M_trans` alpha, the user's `swap_flat_soft`) in the mod, five sound aliases
+waiting for the user's wavs. `PIPELINE.md` has a "Melee weapons" section now.
+
 ## Open items
+
+- Katana CXB: survey `cod_effects/zm_cxb` (effects bundle named after the skin) and the PvE copy
+  `mainweapon_82335_katanacxbpve`; name the last `73256` event pair (`3012684355` / `3046239529`, the shared
+  swing layer alone); the `wpn_melee` class events are unnamed (`find` only tries gun actions).
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
   `WwiseNames` the skin actions (`boltpull`, `boltrelease`, `reloadstart`, `raisefirst`, `fire_first`,
