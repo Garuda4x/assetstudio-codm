@@ -114,7 +114,7 @@ namespace CodmCli
             Console.WriteLine("  weapon <id|folder|name>        show the paks, base weapon, skins, components, fx and banks of a weapon");
             Console.WriteLine("  export <id|folder> [--out d]   export models (cast), textures, sounds [--fx] [--no-sounds] [--class-banks] [--bank-variants] [--no-models] [--no-textures] [--no-materials] [--no-base] [--components] [--no-deps] [--max-deps n] [--all-copies]");
             Console.WriteLine("  cabindex [--rebuild]           build/refresh the CAB -> pak index used to load bundle dependencies");
-            Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve");
+            Console.WriteLine("  anims <weapon> [--no-deps]     per Animator: controller, where its clips live and whether they resolve (--clips: each override pair, base clip -> skin clip)");
             Console.WriteLine("  mbscan <weapon|pak> [--deps]   scan MonoBehaviour blobs for PPtrs (objects / other bundles) and Wwise object ids (--hex dumps small blobs)");
             Console.WriteLine("  events <weapon> [--all]        animation events (notetracks) of the weapon's clips, cross-checked against Wwise ids");
             Console.WriteLine("  wwnames [--rebuild]            guess Wwise event/switch names (FNV) for all weapon banks; links banks to weapons by name");
@@ -602,6 +602,9 @@ namespace CodmCli
                                 missing[ext] = missing.TryGetValue(ext, out var n) ? n + 1 : 1;
                             }
                             Console.WriteLine($"  override clips: {aoc.m_Clips.Length} total, {resolved} resolved");
+                            if (o.Has("clips"))
+                                foreach (var pair in aoc.m_Clips)
+                                    Console.WriteLine($"    {ClipLabel(pair.m_OriginalClip, aoc.assetsFile),-60} -> {ClipLabel(pair.m_OverrideClip, aoc.assetsFile)}");
                             foreach (var kv in missing.OrderByDescending(kv => kv.Value))
                             {
                                 var paksFor = EnsureCabIndex().PaksFor(kv.Key);
@@ -625,6 +628,13 @@ namespace CodmCli
                 am.Clear();
             }
             return 0;
+        }
+
+        private static string ClipLabel(PPtr<AnimationClip> ptr, SerializedFile file)
+        {
+            if (ptr.TryGet(out var clip)) return clip.m_Name;
+            var ext = ptr.m_FileID == 0 ? file.fileName : (ptr.m_FileID - 1 < file.m_Externals.Count ? file.m_Externals[ptr.m_FileID - 1].fileName : "?");
+            return $"? (pathID {ptr.m_PathID} in {ext})";
         }
 
         private static int CmdEvents(Options o)

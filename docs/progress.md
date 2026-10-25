@@ -456,6 +456,15 @@ quarter-ring atlas with sprites; rebuilt into a full IW4 scope overlay (the ring
 cross and fine lines placed as the lens texture and the prefab mesh show them) in the pilot's work
 folder.
 
+**First raise.** The Black Noir bank has a 2.13 s `raisefirst_1p` that no Black Noir clip triggers.
+`codm anims --clips` (new) lists the override pairs, and a scan of the shared controllers' string
+tables (CRC32-checked) gave their state names: the DL Q33 runs on `Basic_1P`, which has no first-raise
+state (equip clips `Equip`, `Equip_W`, `Equip_B`); newer weapons (Bal-27, Static-HV, Cronen Squall)
+run on `Basic_1P_Advanced`, whose `Equip_First` state plays the weapon's `First_Equip` clip with a
+`PlayFirstRaiseSound` event. So no clip was missed. The DL Q33's first-raise sound is never played in
+CODM; it isn't a BR or 3P sound either. The IW4 notetrack script now maps `PlayFirstRaiseSound` to
+`raise_first` for weapons that have the clip.
+
 ## Open items
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach

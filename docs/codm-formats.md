@@ -95,7 +95,24 @@ renderer base so the materials (and through them the textures) of an effect can 
 Weapon bundles ship `AnimatorOverrideController`s whose `m_Clips[].m_OverrideClip` point at the
 clips of one variant (1P, 3P, UI). The shared `AnimatorController`s live in
 `cod_models/weapons/animationcontrollers`. `AnimatorController` parsing is tolerant of the CODM
-layout and soft-fails instead of allocating garbage.
+layout and soft-fails instead of allocating garbage. `codm anims <weapon> --clips` lists each override
+pair (base clip -> skin clip).
+
+The controller's state, transition and parameter names can still be read from the raw object: its
+table of strings (`m_TOS`) holds entries `uint crc32(name), int length, bytes, align 4`, so a scan that
+keeps only strings whose CRC32 matches the preceding uint lists them without false hits. Weapon 1P
+controllers (CAB `e4a1bcd10ef44bfdb630fd4109881e7d`):
+
+- `Basic_1P` (pathID 12): older weapons, e.g. the DL Q33 and its skins. Its equip state is
+  `GetWeapon` (entry `Inactive -> GetWeapon`), with clips `Empty_MainWeapon_M_Equip`, `Equip_W` and
+  `Equip_B` and parameters `QuickEquip`, `IsQuickHand` and `SpecialGetWeapon`. It has **no first-raise
+  state**. The DL Q33 Black Noir's override maps five equip states (`Empty_MainWeapon_M_Equip`, the
+  M4A1, Electro and drone-tablet equips) to its `Equip` (0.80 s) and `Equip_W` to its `Equip_W`
+  (0.60 s); it doesn't override `Equip_B`.
+- `Basic_1P_Advanced` (pathID 1226): newer weapons (Bal-27, Static-HV, Cronen Squall). It adds
+  `Equip.Equip_First` (entered from `Entry`, parameters `FirstGetWeapon` and `FirstGetWeaponType`),
+  with clips `Empty_MainWeapon_M_First_Equip`, `_02` and `_03`, plus `FastEquip`. The weapon's
+  `..._1P_M_First_Equip` clip (Cronen Squall: 1.20 s) carries `PlayFirstRaiseSound`.
 
 ## AnimationClip
 
@@ -261,7 +278,8 @@ and has to be read off per weapon family:
 
 | trigger | event | bank |
 |---|---|---|
-| `PlayRaiseSound` | `play_dlq33blacknoir_raise_1p` (first draw: `raisefirst_1p`) | skin `200g` |
+| `PlayRaiseSound` | `play_dlq33blacknoir_raise_1p` | skin `200g` |
+| `PlayFirstRaiseSound` (`First_Equip`, newer weapons only) | `play_<skin>_raisefirst_1p` | skin |
 | `PlayPlantOKSound` (PutDown) | `play_weapon_sniper_down_1p` (likely) | class `wpn_sniper` |
 | `PlayAdsUpSound` / `PlayAdsDownSound` | `play_weapon_sniper_aim_up_1p` / `aim_down_1p` | class |
 | `PlayBoltOpenSound` / `PlayBoltCloseSound` | `play_dlq33blacknoir_boltpull_1p` / `boltrelease_1p` | skin |
@@ -275,8 +293,15 @@ and has to be read off per weapon family:
 - Names: `play_<skin sound name>_<action>_1p` / `_3p` in the skin banks (the skin's name without
   its `BLP` suffix), `play_weapon_<class>_<action>_1p` / `_3p` / `_3p_br` in the class banks,
   `play_wpn_<weapon>_fire_1p` in the base weapon's bank (`200.bnk`: the default skin's fire, shell
-  drops). Also in `200g`: `armsettle_1p`, `kill_sfx`, and four events not named yet (two pairs that
-  play byte-identical wavs: 0.74 s and 0.76 s double metal clicks).
+  drops). Also in `200g`: `raisefirst_1p`, `armsettle_1p`, `kill_sfx`, and four events not named yet
+  (two pairs that play byte-identical wavs: 0.74 s and 0.76 s double metal clicks).
+- First raise: the weapon sound table has a `FirstRaiseSound` field next to `RaiseSound` (field names in
+  `CODM.exe`). Of the weapons and skins with recovered names, 39 ship `raisefirst_1p` / `_3p` and
+  `armsettle_1p` / `_3p` events (no `_br` variant): newer weapons (Bal-27, Grav, Static-HV...) and skins
+  of older ones (DL Q33 Black Noir, AK117, HVK-30...). Only `First_Equip` clips trigger the first raise
+  (see AnimatorController above). On the
+  DL Q33 (`Basic_1P`, no first-raise clip) the 2.13 s `raisefirst_1p` is never played; it isn't a BR
+  or 3P sound. No trigger plays `armsettle`.
 - Fire is layered: the event plays three containers at once (DL Q33 Black Noir: a 4.3 s body, one of
   6; a 2.0 s / 5.6 s tail, one of 12; a 0.2 s mechanism click, one of 12). The `_first` variants have
   their own body and no click; `_sup` is the suppressed set.
