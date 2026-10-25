@@ -504,10 +504,33 @@ identical (141 of 141 casts).
 swaps the five aim clips), a body, an `Enter01_Wea` piece, three `Huanwen01..03` overlays (own sheets
 `HW01..03`), and part sets: barrel, extra barrel, extra side rail, rail, magazine and muzzle 01-03,
 stock 01-04, bipod 01-02, grip and sight 01. The assembler puts every part on its attach point
-(`ExBar_point`, `ExSra_point`, `Sra_point_R` are new). Emission maps (`_E`) on most sheets, flipbook
-frames for the rail (`00..08`) and `HW03`, a flow map without data. Open: the matcher puts the
-`Huanwen` meshes on the body's sheet (their `HW0n` names are not derivable from the part name), and
-the skin's sound bank is one of `200a..200f`, whose older event names are not recovered.
+(`ExBar_point`, `ExSra_point`, `Sra_point_R` are new). Emission maps (`_E`) on most sheets, five glow
+levels for the rail and the `HW03` emission (`00..08`, orange to red; the rail material has no colour
+map of its own), a flow map without data. Open: the matcher puts the `Huanwen` meshes on the body's
+sheet (their `HW0n` names are not derivable from the part name), and the skin's sound bank is one of
+`200a..200f`, whose older event names are not recovered.
+
+## 2026-10-25: DL Q33 Lotus Flames through the IW4 pipeline
+
+The user picked overlay 3 with the default part set, Lotus notetrack names, and asked for the hand
+steps of the pilot to be done headless too. Everything was built in a new work folder
+(`source\weapons\dlq33\dlq33lotusflames`, the pilot's layout); the user's files were only read.
+
+**Findings.** No renderer of this skin names a material and its sheets are painted edge to edge, so
+every submesh's sheet came from UV overlap between meshes and textured renders (format notes, renderer
+section; the export's name match misses the `Ball`, `HW01Glass` and `Sto` submeshes). The attach points
+and ornament bones are animated in this skin's clips, and clips key bone scale for effects (format
+notes, "Weapon attach points"); the bolt never moves. Its 3P parts are the 1P ones x 8/7, where the
+Black Noir's are x 10/7 (format notes, "Third-person models and LODs").
+
+**Built** (iw4xTools CODM converter): a script that swaps a new gun into a finished weapon's animated
+viewhands (`Weapon\codm_weapon_merge_viewhands.py`; bones and meshes equal to the gun blend within
+2e-5), so no hand merge or IK setup is needed for later weapons. With the existing steps: 36-bone gun
+xmodel (39 385 vertices, 9 materials), retarget at an exact sync pose (wrists 0.003, gun 0.0000), nine
+anims baked through anim_utils as in its panel (gun bones on CODM within 0.0002, wrists 0.003), the
+magazine moved out of view where CODM scales it to 0, notetracks, XANIMs as the pilot's (deform bones
+without `tag_ads`), ten materials through the user's converter and its chosen variant, and the world
+model (3P LOD0 to LOD2 on a copy of the viewmodel skeleton, bones equal within 2e-7).
 
 ## Open items
 
@@ -526,7 +549,8 @@ the skin's sound bank is one of `200a..200f`, whose older event names are not re
   materials as alternatives; characters (untested with the matcher); per-submesh sheets: the name
   match puts the Black Noir body's second submesh on `_mtl_SightPupil` and the stock's first on
   `Sto01`, and the bipod falls back to `Wea01`, where the user's viewmodel (and the 3P match against
-  it) has `Rai01`, `Rai01` and `Sto01` / `Rai01`.
+  it) has `Rai01`, `Rai01` and `Sto01` / `Rai01`. Lotus Flames: `Huanwen0n` -> `HW0n`, the stock on
+  `Sto` (not `Sto01`), body submeshes on `Ball` and `HW01Glass`, the rail's levelled colour maps.
 - Decrypt `DataTableBytes` by static analysis of `CODM.exe` (the real manifest: `WeaponAsset`,
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.

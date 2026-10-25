@@ -192,7 +192,15 @@ The 1P weapon rig carries the attach points under `Bone_RightHand`: `Bar_point` 
 `Bone_DanJia`, the magazine bone, so it follows the reload), `Rai_point`, `Sight_point` (and `Sight`
 with `Center`), `Sto_point`, `Tra_point`, `Pendant_point` (charm), `ShellDropSocket`. Animated weapon
 bones (DL Q33 Black Noir): `Bip01`, `Bone_RightHand`, `Bone_shuan`/`Bone_Bolt` (bolt), `Bone_DanJia`,
-the rail blades `daopian_*`; the points themselves only carry constant keys.
+the rail blades `daopian_*`; the points themselves only carry constant keys. Not in every skin: the
+DL Q33 Lotus Flames animates its points (the barrel, rail, grip, stock and bipod fly 15 to 27 cm apart
+in the inspection, the sight moves for aiming), has extra ones (`ExBar_point`, `ExSra_point`,
+`Sra_point_R`) and spinning ornament bones (`Bone008..035` under `W_root`), and its bolt bones never move.
+
+Clips key bone scale too, for effects: the Lotus Flames hides the magazine with scale 0 while it is off
+the gun in the reloads, hides scope parts while aiming, pulses an ornament on firing (up to 1.34), and
+builds mirrored halves from bones that hold scale -1 at rest and in every clip (that cancels in
+skinning). Formats without a scale channel (IW4 XANIM) lose the first three.
 
 Attachment prefabs come in two kinds, both already in the weapon's frame (cast space, `Bone_RightHand`
 at the origin in bind pose):
@@ -210,9 +218,10 @@ the main-rig bone at its root position and grafts the parts' sockets onto the ri
 
 ### Third-person models and LODs
 
-Every part ships `_1P`, `_3P` and `_UI` prefabs. The 3P mesh is the 1P one scaled by 10/7 (barrel,
-muzzle, grip: size ratio 1.0000 after the scale), barrel along +X instead of -Y; its root sits 0.019 1P
-units above the 1P `Bone_RightHand`. All 3P parts are static and already placed: the attach points hang
+Every part ships `_1P`, `_3P` and `_UI` prefabs. The 3P mesh is the 1P one scaled up, by a factor that
+depends on the skin: 10/7 for the DL Q33 Black Noir (barrel, muzzle, grip: size ratio 1.0000 after the
+scale), 8/7 for the DL Q33 Lotus Flames (rail 1.0000, stock and magazine within 1 %). Barrel along +X
+instead of -Y; the Black Noir 3P root sits 0.019 1P units above the 1P `Bone_RightHand`. All 3P parts are static and already placed: the attach points hang
 on the main mesh's node (`Grip_point`, `Mag_point`, `Rai_point`, `Sight_point`, `Sto_point`,
 `ShellDropSocket`...), `Bar_point` and `Bip_point` on the rail, the muzzle on the barrel's `Muzzle_point`.
 No bolt, magazine or blade bones.
@@ -229,6 +238,10 @@ Sheets of the Black Noir 3P submeshes, matched by position and UV against the us
 viewmodel: body `_1`, the stock's `_0` and bipod `_1` are on `Rai01`, bipod `_0` on `Sto01`; the sight's
 3P-only scope mount sits in a free area of `Wea01`, its lens caps take `Glass`. The export's name match
 gets these wrong (`_mtl_SightPupil`, `Sto01`, `Wea01` fallback).
+
+Lotus Flames 3P: body `_0` `Wea`, `_1` `Ball`, `_2` `HW01Glass`; its LODs add the stock on `Sto`
+(`_lod1_3`, `_lod2_2`); the sight's small submeshes are lens discs and tube on `Glass` (none in 1P); the
+overlay's LOD2 carries a piece LOD0 and LOD1 lack (a flame arc under the barrel).
 
 ### Scope reticles
 
