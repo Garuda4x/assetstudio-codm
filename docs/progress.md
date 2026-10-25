@@ -446,7 +446,9 @@ does not strip the skin's `BLP` suffix; extracted by hand with `codm wems` into 
 (`sounds/200g`, `200gp3`, `wpn_sniper`), and the recovered names went into the local name cache so
 the folders carry them. In the iw4xTools CODM converter, `Weapon\codm_weapon_notetracks.py` copies the
 triggers onto the baked IW4 actions as notetracks named after the event (`play_` -> `weap_`, `_1p` ->
-`_plr`); a test XANIM export of the empty reload carries all seven at the CODM frames.
+`_plr`, words split: `weap_dlq33blacknoir_bolt_pull_plr`); a test XANIM export of the empty reload
+carries all seven at the CODM frames. The `_e` clip events play the same sounds as the plain ones
+(by ear), so they share a notetrack.
 
 ## Open items
 
