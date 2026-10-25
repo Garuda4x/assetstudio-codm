@@ -465,6 +465,28 @@ run on `Basic_1P_Advanced`, whose `Equip_First` state plays the weapon's `First_
 CODM; it isn't a BR or 3P sound either. The IW4 notetrack script now maps `PlayFirstRaiseSound` to
 `raise_first` for weapons that have the clip.
 
+## 2026-10-25: IW4 pilot world model (3P LODs)
+
+The user cleaned up the pilot work folder (now `source\weapons\dlq33\dlq33blacknoir`, every name
+`dlq33blacknoir`) and asked for the world model, LOD0 to LOD2, in a Blender file with the viewmodel's
+skeleton, scale and materials (placement, export and xmodel build are theirs).
+
+**Finding: CODM's 3P LODs merge parts.** The 3P parts are the 1P ones scaled by 10/7; only body, rail,
+magazine, sight and bipod have LOD meshes, and the body's and rail's absorb the stock, grip, barrel and
+muzzle, one sheet per submesh (format notes, "Third-person models and LODs"). Scaled by 0.7 x 143.037
+cm, the 3P parts land on the viewmodel's within 0.002 cm.
+
+**Built** (scratch script, not in a repo): `xmodel\w_dlq33blacknoir_xmodel.blend`, a new file next to the
+viewmodel's: the 36 3P meshes on `w_dlq_amt`, a copy of the viewmodel skeleton (16 bones, same names,
+hierarchy and rests), with the viewmodel's five materials appended from its blend; magazine on
+`j_mag1`, the rest on `j_gun`; collections `W::DLQ::LOD0..2::<part>`, the user's w_cheytac LOD0 as an
+excluded reference.
+
+**Verified** headless: bones equal to the viewmodel's within 2e-6 cm; the materials of 30 meshes
+re-derived from the viewmodel by position and UV, no mismatch; the other 6 (3P-only scope mount, lens
+caps) by the sheet's free UV area and the lens's full-square UVs; textured renders of the three LODs
+show every part coherent.
+
 ## Open items
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
@@ -479,8 +501,10 @@ CODM; it isn't a BR or 3P sound either. The IW4 notetrack script now maps `PlayF
 - Dependency resolution with components included follows the other weapons' attachments in the
   shared buckets too (60-pak limit reached for the DL Q33); scope it to the exported objects.
 - Materials: normal (`_BumpMapPakced`, channel layout unknown) and metal/roughness (`_M`) maps; camo
-  materials as alternatives; characters (untested with the matcher); the Black Noir bipod's sheet
-  (no sheet clearly free, falls back to `Wea01`).
+  materials as alternatives; characters (untested with the matcher); per-submesh sheets: the name
+  match puts the Black Noir body's second submesh on `_mtl_SightPupil` and the stock's first on
+  `Sto01`, and the bipod falls back to `Wea01`, where the user's viewmodel (and the 3P match against
+  it) has `Rai01`, `Rai01` and `Sto01` / `Rai01`.
 - Decrypt `DataTableBytes` by static analysis of `CODM.exe` (the real manifest: `WeaponAsset`,
   `WeaponSoundConfigs`, `WeaponPartCompose`, `LegendaryWeaponEffect`). Reading or patching a copy
   of the exe is allowed; running the game is not.

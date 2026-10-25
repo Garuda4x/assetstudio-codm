@@ -205,6 +205,28 @@ at the origin in bind pose):
 `tools/blender/codm_assemble_weapon.py` rebinds the skinned parts by name, binds each static part to
 the main-rig bone at its root position and grafts the parts' sockets onto the rig.
 
+### Third-person models and LODs
+
+Every part ships `_1P`, `_3P` and `_UI` prefabs. The 3P mesh is the 1P one scaled by 10/7 (barrel,
+muzzle, grip: size ratio 1.0000 after the scale), barrel along +X instead of -Y; its root sits 0.019 1P
+units above the 1P `Bone_RightHand`. All 3P parts are static and already placed: the attach points hang
+on the main mesh's node (`Grip_point`, `Mag_point`, `Rai_point`, `Sight_point`, `Sto_point`,
+`ShellDropSocket`...), `Bar_point` and `Bip_point` on the rail, the muzzle on the barrel's `Muzzle_point`.
+No bolt, magazine or blade bones.
+
+LODs are child nodes `<part>_3P_lod1` / `_lod2` with their own meshes, and only five parts have them:
+body (`Wea01`), rail, magazine, sight, bipod. The body's and rail's LOD meshes absorb the parts without
+LODs, one sheet per submesh (DL Q33 Black Noir): body `_lod<n>_0` on `Rai01` (stock frame and the body's
+`Rai01` pieces), `_1` on `Wea01` (receiver, grip), `_2` on `Sto01`; rail `_0` on `Rai01`, `_1` on `Wea01`
+(barrel and muzzle). A world model is therefore LOD0 = every part's base meshes, LOD<n> = the `_lod<n>`
+meshes alone: LOD1 lies within 1 cm (IW4 viewmodel scale) of every LOD0 part, LOD2 within 5 cm. Black
+Noir triangles: 15.4k / 3.1k / 0.6k.
+
+Sheets of the Black Noir 3P submeshes, matched by position and UV against the user's hand-fixed
+viewmodel: body `_1`, the stock's `_0` and bipod `_1` are on `Rai01`, bipod `_0` on `Sto01`; the sight's
+3P-only scope mount sits in a free area of `Wea01`, its lens caps take `Glass`. The export's name match
+gets these wrong (`_mtl_SightPupil`, `Sto01`, `Wea01` fallback).
+
 ### Scope reticles
 
 A sniper skin's in-scope reticle is not in the weapon's paks but in the shared bundle
