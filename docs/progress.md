@@ -444,7 +444,9 @@ Every trigger of the 1P clips now has an event; the table, the naming rules, the
 surface switch are in the format notes. The weapon export had missed `200g` because the bank linking
 does not strip the skin's `BLP` suffix; extracted by hand with `codm wems` into the user's export
 (`sounds/200g`, `200gp3`, `wpn_sniper`), and the recovered names went into the local name cache so
-the folders carry them.
+the folders carry them. In the iw4xTools CODM converter, `Weapon\codm_weapon_notetracks.py` copies the
+triggers onto the baked IW4 actions as notetracks named after the event (`play_` -> `weap_`, `_1p` ->
+`_plr`); a test XANIM export of the empty reload carries all seven at the CODM frames.
 
 ## Open items
 
