@@ -188,6 +188,22 @@ at the origin in bind pose):
 `tools/blender/codm_assemble_weapon.py` rebinds the skinned parts by name, binds each static part to
 the main-rig bone at its root position and grafts the parts' sockets onto the rig.
 
+### Scope reticles
+
+A sniper skin's in-scope reticle is not in the weapon's paks but in the shared bundle
+`cod_models/weapons/component/sight/crosshair` (148 reticles, one folder per version:
+`37.2/texture/material_dlq33blacknoirblp_ssm_a.tga`, material `Material_<skin>_SSM`, shader parameters
+`_SightRadius`, `_SightBlur`... for the eyepiece vignette). The sight's `_SightPupil` prefab draws the
+scope view; the skin's `Glass_*_A` is only the lens seen from outside (opaque, reticle painted on).
+
+The reticle texture (DL Q33 Black Noir: 1024, BC7) is an atlas whose shapes are in alpha (RGB white,
+except black corner marks on the centre cross): one quarter of the ring, centred near the sheet's
+bottom-right corner and mirrored about the middle of its last 12 o'clock bar (x = 1009.5) and the sheet's
+bottom edge, plus sprites for the 9 o'clock chevron, the centre cross and a light strip. The prefab
+`Material_<skin>_SSM_A` has a 25-vertex mesh placing only the centre: the cross (+-0.000642 units) and four
+fine lines from the strip (0.000795 to 0.00508 units, bright end inward). The ring and chevrons are laid
+out elsewhere (not found); the lens texture shows the finished layout.
+
 ### Camera clips
 
 Every first-person animation has a sibling `<name>_Camera` clip (`..._1P_M_FireLeft_Camera`) that

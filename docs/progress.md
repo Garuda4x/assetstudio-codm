@@ -450,6 +450,12 @@ triggers onto the baked IW4 actions as notetracks named after the event (`play_`
 carries all seven at the CODM frames. The `_e` clip events play the same sounds as the plain ones
 (by ear), so they share a notetrack.
 
+**Scope reticle.** Sniper skin reticles live in the shared `component/sight/crosshair` bundle, not in the
+weapon's paks (format notes, "Scope reticles"), so weapon exports miss them. The Black Noir's is a
+quarter-ring atlas with sprites; rebuilt into a full IW4 scope overlay (the ring mirrored, chevrons,
+cross and fine lines placed as the lens texture and the prefab mesh show them) in the pilot's work
+folder.
+
 ## Open items
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
@@ -457,6 +463,7 @@ carries all seven at the CODM frames. The `_e` clip events play the same sounds 
   `fire_sup`, `fire_sup_first`, `clipin_e`, `clipout_e`, `armsettle`, `kill_sfx`) and the class ones
   (`aim_up`, `aim_down`, `down`, `reload_end`); resolve each trigger in `notetracks.txt` (skin event,
   else class event). Four `200g` events still unnamed.
+- Export a sniper skin's reticle with the weapon (`component/sight/crosshair`, by the skin's name).
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
   name recovery (90 of several thousand ids named).
 - Source of the characters' first-person arms mesh, and of the Beam Saber's (`meleeweapon_59823`).
