@@ -487,6 +487,28 @@ re-derived from the viewmodel by position and UV, no mismatch; the other 6 (3P-o
 caps) by the sheet's free UV area and the lens's full-square UVs; textured renders of the three LODs
 show every part coherent.
 
+## 2026-10-25: DL Q33 Lotus Flames, first look (second IW4 port)
+
+The user asked for the whole port pipeline on `mainweapon_16856_dlq33lotusflames`, a skin directly on
+the base DL Q33 (no Black intermediate).
+
+**The 1P body was missing.** Both copies of the 1P prefab have the body renderer's `m_Mesh` at 0 and
+no bones (the UI's `Enter01_Wea` points at `1 << 40`), so the fallback to the `.fbx` copy that fixed
+the Black Noir had nothing to take. The mesh is in the bundle (`Wea01_DLQ33LotusFlames_1P`, 6 375
+vertices, 4 submeshes) under the renderer's GameObject name. `ModelConverter` now takes a bundle mesh
+of that name when the reference does not resolve and the name is unique; the bones come from the mesh's
+name hashes as before. The 1P model has the body and `Enter01_Wea` now; a Black Noir re-export is byte
+identical (141 of 141 casts).
+
+**What the skin is made of.** Own 1P clips (58 overrides; a second override controller, `..HW_1P`,
+swaps the five aim clips), a body, an `Enter01_Wea` piece, three `Huanwen01..03` overlays (own sheets
+`HW01..03`), and part sets: barrel, extra barrel, extra side rail, rail, magazine and muzzle 01-03,
+stock 01-04, bipod 01-02, grip and sight 01. The assembler puts every part on its attach point
+(`ExBar_point`, `ExSra_point`, `Sra_point_R` are new). Emission maps (`_E`) on most sheets, flipbook
+frames for the rail (`00..08`) and `HW03`, a flow map without data. Open: the matcher puts the
+`Huanwen` meshes on the body's sheet (their `HW0n` names are not derivable from the part name), and
+the skin's sound bank is one of `200a..200f`, whose older event names are not recovered.
+
 ## Open items
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach

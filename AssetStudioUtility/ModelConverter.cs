@@ -976,7 +976,23 @@ namespace AssetStudio
                 }
             }
 
-            return null;
+            return MeshByName(meshR);
+        }
+
+        /// <summary>
+        /// CoD Mobile ships some prefabs with every copy's renderer mesh reference stripped (the game assigns
+        /// it at runtime) while the mesh sits in the same bundle under the renderer's GameObject name
+        /// (DL Q33 Lotus Flames body). Only an unambiguous match is taken.
+        /// </summary>
+        private static Mesh MeshByName(Renderer meshR)
+        {
+            if (!meshR.m_GameObject.TryGet(out var go) || string.IsNullOrEmpty(go.m_Name))
+                return null;
+            var matches = meshR.assetsFile.Objects.OfType<Mesh>().Where(m => m.m_Name == go.m_Name).Take(2).ToList();
+            if (matches.Count != 1)
+                return null;
+            Logger.Warning($"[Export] {go.m_Name}: renderer has no mesh reference, using the bundle's mesh of the same name");
+            return matches[0];
         }
 
         private string GetTransformPath(Transform transform)

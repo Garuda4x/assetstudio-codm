@@ -59,7 +59,10 @@ matches the exported PNGs bit for bit, alpha included. PNG export is lossless RG
   bundle (an animation pack). The game assigns skin and camo materials at runtime (the base DL Q33
   bundle holds one material per camo). A first-person prefab's SkinnedMeshRenderer can leave `m_Mesh`
   empty too; its `AssetRef` MonoBehaviour names the mesh, and the imported `.fbx` copy next to the
-  prefab carries it.
+  prefab carries it. Some skins strip it in every copy (DL Q33 Lotus Flames: both `Wea01_..._1P`
+  renderers have `m_Mesh` = 0 and no `m_Bones`; the UI's `Enter01_Wea` points at `1 << 40`): the mesh
+  is still in the bundle under the renderer's GameObject name, skinned through its `m_BoneNameHashes`,
+  and the export takes it by that name when the name is unique in the file.
 - Materials follow part + skin names: mesh `Wea01_DLQ33BlackNoirBLP_1P` -> `Wea01_DLQ33BlackNoirBLP_mtl`,
   `DLQ33Black_1P` -> `wea_DLQ33Black_mtl`, `Wea01_DL_Q33_UI_lod0` -> `wea_DLQ33_mtl`; variants for further
   submeshes (`..._mtl_SightPupil`). `_MainTex` is the colour map (`_A`), `_BumpMapPakced` a packed normal
