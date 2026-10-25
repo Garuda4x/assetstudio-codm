@@ -532,6 +532,19 @@ magazine moved out of view where CODM scales it to 0, notetracks, XANIMs as the 
 without `tag_ads`), ten materials through the user's converter and its chosen variant, and the world
 model (3P LOD0 to LOD2 on a copy of the viewmodel skeleton, bones equal within 2e-7).
 
+## 2026-10-25, evening: the port pipeline written down for other agents
+
+The user asked for the whole CODM -> IW4x weapon port as a guide other agents can follow. It lives with
+the tools: `Q:\Modding\iw4x\iw4xTools\CODM\CODMConverter\Weapon\PIPELINE.md` (the user's rules, tools and
+places, sixteen steps with their commands, what went wrong before, the Lotus Flames as worked example).
+The one-off scripts of the Lotus port became tools there, driven by arguments or a per-weapon spec
+(`look_*.json`, `world_*.json`, `materials_*.json` in the Lotus work folder): look assembly, sheet
+check, headless bake, XANIM export, viewmodel blend, world model fit/build, materials to IW4x, sound bank
+search, sound aliases. Rerun against the Lotus results: assembly, viewmodel blend and world model match
+(same meshes, sheets, faces), the materials chain reproduces all 40 delivered files byte for byte, and the
+XANIM export matches the user's own BetterBlenderCOD exports. The IW4x material jsons and IWIs (normal
+maps in image.exe's default encoding, as MW2's own and the pilot's) went into the mod.
+
 ## Open items
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
