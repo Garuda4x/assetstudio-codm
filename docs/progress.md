@@ -571,6 +571,17 @@ gun (`j_gun`, `j_bone01`), 8 anims (idle, pullout, putaway, sprint loop, swipe =
 0.001 cm, the material (glow on `_M_trans` alpha, the user's `swap_flat_soft`) in the mod, five sound aliases
 waiting for the user's wavs. `PIPELINE.md` has a "Melee weapons" section now.
 
+## 2026-10-25, night: DL Q33 Lotus Flames sounds in the mod
+
+The user picked the Lotus wavs by ear from the `200e` bank. Their aliases and wavs went into the mod, and the
+weapon file (`dlq_lotus_mp`) maps the Lotus notetracks and plays the Lotus fire sounds. The anims needed no
+re-export: their notetracks already had the Lotus names. **Finding:** this skin's clips trigger fewer sounds
+than the Black Noir's. Its reloads have no `PlayReloadStartSound` and its `FireBolt` has no trigger, so the
+Lotus never plays a reload-start or bolt sound when rechambering; the 4.5 s fire layer covers the rechamber.
+Its pullout's raise trigger is at frame 0. The fire layer plays as the fire alias's secondary alias, the way
+the mod's other layered fire sounds do, with a zone line under its sound layers. The scope-in sound is mapped
+per weapon onto the class note `weap_sniper_aim_up_plr` of the ADS anim, so no anim changed.
+
 ## Open items
 
 - Katana CXB: survey `cod_effects/zm_cxb` (effects bundle named after the skin) and the PvE copy
