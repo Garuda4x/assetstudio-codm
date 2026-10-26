@@ -582,7 +582,33 @@ Its pullout's raise trigger is at frame 0. The fire layer plays as the fire alia
 the mod's other layered fire sounds do, with a zone line under its sound layers. The scope-in sound is mapped
 per weapon onto the class note `weap_sniper_aim_up_plr` of the ADS anim, so no anim changed.
 
+## 2026-10-26: skin effects as a port step
+
+The user asked for the Lotus effects extraction, done by hand on 2026-10-25, to become an official port
+step. It is now a tool in the iw4xTools CODM converter: `Weapon\codm_weapon_fx.py`, with its bundle reader
+`codm_fx_assets.ps1`, documented as step 16 of `Weapon\PIPELINE.md`. The tool has three steps:
+- `find`: the skin paks' references through the CAB index, unpacking the `cod_effects/*` bundles among them,
+  then the objects named after the skin, grouped.
+- `dump`: the chosen effects, their bundles' `#tex` parts, and the texture and mesh bundles they still need.
+- `organize`: decoded textures and one folder per effect.
+
+On the Lotus it reproduces the hand run's structures and its 399 materials; the textures both runs have are
+identical in pixels. It also finds 81 more textures, the view effects' meshes and a `Hit_mid` effect, all
+missed by hand.
+
+**Correction:** the hand run's notes said CODM assigns effect materials at runtime. In fact the renderer
+material slots misread: they come out as float bit patterns (format notes, ParticleSystemRenderer). The few
+slots that did resolve pulled in 7 textures of other skins' effects. The tool skips the slots and matches
+materials by name.
+
 ## Open items
+
+- Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as
+  float bit patterns. The header probably has fields the 5.6 path skips. Reading it right would link emitters
+  to their materials, and might do the same for the weapons' renderers.
+- `codm export --fx` only takes effect bundles named after the weapon. A skin's effects in shared `efx_*`
+  bundles are found by `codm_weapon_fx.py` in the iw4xTools converter (the skin paks' references plus names);
+  this could move into the CLI.
 
 - Katana CXB: survey `cod_effects/zm_cxb` (effects bundle named after the skin) and the PvE copy
   `mainweapon_82335_katanacxbpve`; name the last `73256` event pair (`3012684355` / `3046239529`, the shared

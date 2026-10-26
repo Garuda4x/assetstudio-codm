@@ -99,6 +99,15 @@ does not have.
 Stock AssetStudio does not parse it. A minimal `ParticleSystemRenderer : Renderer` reads only the
 renderer base so the materials (and through them the textures) of an effect can be followed.
 
+In the 1.9.57 effect bundles the material slots don't read. Across 34 DL Q33 Lotus Flames effects
+(`cod_effects/efx_190v1`, 370 renderers), 156 renderers have no slot, 753 slots are null and 758 point at
+nothing. The values look like float bit patterns (path id `0x42C80000` = 100.0, file id `0x3F800000` = 1.0),
+so the renderer header probably holds fields the reader skips: these bundles are stamped 5.6 but use the 2017
+vertex format enum (Mesh above). The few slots that resolve land on other skins' materials (Dingo, QQ9 Saibo).
+The materials sit in the bundle's `#tex` part and are named after the emitter and skin
+(`fire_02_F_DLQ33LotusFlames` for emitter `fire_02`). Their texture slots read correctly. The iw4xTools
+`Weapon\codm_weapon_fx.py` matches materials to emitters by name.
+
 ## AnimatorController / AnimatorOverrideController
 
 Weapon bundles ship `AnimatorOverrideController`s whose `m_Clips[].m_OverrideClip` point at the
