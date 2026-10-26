@@ -601,6 +601,9 @@ material slots misread: they come out as float bit patterns (format notes, Parti
 slots that did resolve pulled in 7 textures of other skins' effects. The tool skips the slots and matches
 materials by name.
 
+At the user's request the tool's output replaced the Lotus work folder's `fx\` (the effects had not been used
+yet). The skin's survey notes, corrected, are at the end of its `_INDEX.txt`.
+
 ## Open items
 
 - Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as
