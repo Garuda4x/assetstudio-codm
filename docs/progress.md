@@ -610,8 +610,8 @@ materials by name.
   bundles are found by `codm_weapon_fx.py` in the iw4xTools converter (the skin paks' references plus names);
   this could move into the CLI.
 
-- Katana CXB: survey `cod_effects/zm_cxb` (effects bundle named after the skin) and the PvE copy
-  `mainweapon_82335_katanacxbpve`; name the last `73256` event pair (`3012684355` / `3046239529`, the shared
+- Katana CXB: survey the PvE copy `mainweapon_82335_katanacxbpve` (`cod_effects/zm_cxb`, though named
+  like the skin, holds the CXB zombies mode's effects: gameplay buffs and bosses); name the last `73256` event pair (`3012684355` / `3046239529`, the shared
   swing layer alone); the `wpn_melee` class events are unnamed (`find` only tries gun actions).
 
 - Weapon sound banks: link a skin's letter bank by its name without the `BLP` suffix; teach
