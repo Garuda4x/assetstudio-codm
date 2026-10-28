@@ -661,6 +661,32 @@ before this session have the same offset, so it was never a decode issue. The ex
 origin (meshes and root keys with it). Checked: root at 0, every other bone and all 21 + 38 clips' curves
 identical, vertices shifted by exactly the old offset, Katana CXB unchanged.
 
+## 2026-10-28, later: melee, throw and assi weapons' own sound banks
+
+The user found the Karambit and Sai exports' sounds were random gun sounds. Cause: the catalog linked banks
+by bare id, and base ids repeat across kinds, so `meleeweapon_004_karambit` got the M21 EBR's `04`, `04a`,
+`04p3`, `04ap3` (main weapon 004), the melee Katana the M16A4's, the Combat Knife the AK-47's. The kinds' own
+banks carry a prefix (`m01`, `m30882`, `t04`, `a21`) and were never linked. Hashing candidate names against
+every bank found the Sai's events in `m30882` (`play_wpn_melee_sai_*`) and the knife's in `m01`; the bank
+numbers match the kinds' ids (m 41 of 42, t 69 of 69, a 13 of 13), while `sp<n>` match no special weapon and
+stay out.
+
+**Changed:** `WwiseIndex` parses `m` / `t` / `a` banks; `WeaponCatalog` links each weapon to its kind's banks
+and gives bare-id banks to a melee, throw or assi weapon only when no main weapon has the id (unique-id skins
+like `73256` keep theirs); a prefixed bank's name tokens link only weapons of its kind; the export's default
+bank filter treats `m30882a` like `130a` (variant, opt-in); name recovery covers the prefixed banks and tries
+`play_wpn_melee_` on `m` banks only. Effect: no main weapon changes; 63 melee, 92 throw and 42 assi weapons get
+their own banks instead of a gun's (or none). The Karambit has no bank of its own (no `m04`).
+
+**Name collisions:** a full `codm wwnames --rebuild` over the new banks (25 minutes) named two of the Sai's stop
+events `stop_weapon_s36ikun_attack_1p/_3p` (32-bit FNV-1 collisions with `stop_wpn_melee_sai_inspection_*`), and
+the melee prefix tried against every weapon name produced `play_wpn_melee_hs2126triumphantbeat_throw_player` in
+the DP27's bank. Hence the kind guard and the melee-only prefix. The local name caches were put back to their
+state before the rebuild plus the 25 verified Sai and knife names; a clean rebuild is optional.
+
+Exports: `export/meleeweapon_30882_sai` (`m30882` named, `m30882a` variant), `export/meleeweapon_004_karambit`
+(`wpn_melee` class bank; `sounds/_candidates/m01_knife` extracted with `codm wems m01`).
+
 ## Open items
 
 - Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as

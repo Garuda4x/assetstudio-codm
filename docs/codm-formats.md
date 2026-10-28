@@ -430,6 +430,15 @@ and has to be read off per weapon family:
   `glass`, `grass`, `metal`, `sand`, `snow`, `stone`, `wood`, `ice`, `rubber`, `plastic`, `cloth`,
   `gravel` and unnamed others): the magazine landing on the ground. `200.bnk` has the same kind of
   event for the shell drop.
+- Melee base weapons use `m<id>` banks (install layout notes). Sai, bank `m30882`: `play_wpn_melee_sai_<action>_1p`
+  / `_3p` / `_3p_br` with actions `equip`, `fire1`, `fire2`, `fire3`, `inspection` (`stop_` twin) and `putdown`;
+  its clips trigger `PlayRaiseSound`, `PlayFirstAttackSound` (Fire1Start), `PlaySecondAttackSound` (Fire2Start),
+  `PlayStabSound` (Fire3Start, FireJump), `PlayInspectionSound1` and `PlayPutdownSound`. `m30882a` (22 events,
+  unnamed) is a letter variant. Knife, bank `m01` (40 events): only `play_knife_attack_1p/_3p` and
+  `play_knife_hit_1p/_3p` named so far; nothing in it is longer than 1.54 s, so it holds no inspection. No bank
+  anywhere has a karambit-named event and there is no `m04`; the Karambit's clips are mostly knife_iw6's, so
+  `m01` (swings, hits, handling) and `wpn_melee` (1P/3P pairs of 4.9 to 7.9 s, the inspection lengths) are the
+  candidates. Which event a trigger plays is in the encrypted sound config.
 - Melee (Katana CXB, skin bank `73256`/`73256p3`, class `wpn_melee`): `PlayRaiseSound` ->
   `play_katanacxb_raise_1p`, `PlayInspectionSound1` -> `play_katanacxb_inspection_1p` (8.95 s, `stop_`
   twin), and the combo hits `PlayFirstAttackSound` (Fire1, Fire1Star) / `PlaySecondAttackSound` (Fire2) /

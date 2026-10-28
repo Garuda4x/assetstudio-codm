@@ -143,6 +143,16 @@ names. See [progress.md](progress.md) for what was tried.
   skin's events are named after the skin without its `BLP` suffix, which the bank linking does not
   try yet, so weapon exports miss these banks (`codm wems 200g` extracts one by hand). How animation
   triggers pick events: [codm-formats.md](codm-formats.md), "Animation events".
+- **Prefixed weapon banks** (2026-10-28): melee weapons' banks are `m<id>` (`m01` the knife, `m30882` /
+  `m30882a` the Sai, `m9200` the Kali Sticks), throw weapons' `t<id>` (`t04` the C4), assi weapons' `a<id>`
+  (`a03` the MW11, which borrows from `wpn_pistol`). The numbers are those weapons' ids: 41 of the 42
+  distinct `m` numbers are melee ids, all 69 `t` numbers throw ids, all 13 `a` numbers assi ids. Base ids
+  repeat across kinds (`meleeweapon_004_karambit`, `mainweapon_004_m21ebr`), so a bare-id bank belongs to
+  the main weapon whenever one has that id; melee, throw and assi weapons take bare-id banks only when no
+  main weapon shares the id (skins with unique ids, e.g. the Katana CXB's `73256`). Before this the
+  Karambit exported the M21 EBR's `04` banks and the melee `m` banks were never linked. `sp<n>` banks are
+  not special weapons (none of their numbers is a special weapon id) and stay unlinked. Not every weapon
+  has a bank: there is no `m04`, so the Karambit has none of its own.
 - **Class banks** `wpn_ar`, `wpn_smg`, `wpn_sniper`, `wpn_lmg`, `wpn_shotgun`, `wpn_pistol`,
   `wpn_melee`, `wpn_launcher`: base weapon sounds. Which one a weapon uses is not derivable from the
   files (skin banks borrow handling sounds from several of them), so it comes from the weapon class
