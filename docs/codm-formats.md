@@ -140,6 +140,32 @@ The clips chain pose to pose: `Fire1` runs idle -> idle (41 frames) and equals `
 `Fire3` (the stab) continues from it. Every exported Cast clip ends in 2 padding frames keyed only on static
 channels.
 
+Where the launch-era melee animations live (2026-10-28):
+
+- **The knife family animates from `meleeweapon_001_knife_iw6`.** The `*_1P` override controllers of the
+  Karambit (`004`), Noir Blade (`72023_karambitblp`), Bowie (`010`), Combat Knife (`011`), KnifeS (`014`) and
+  Candy Cane (`2571`) point 20 to 23 of their ~25 states at `MeleeWeapon_001_Knife_iw6_1P_M_*` clips in
+  knife_iw6's main bundle (CAB `f431c3d67f77231f9e39953ab57cf4bc`); their own bundles hold at most an Equip
+  and an Inspection. The catalog links skins by name, so it shows knife_iw6 as "base ?" with no skins; the
+  dependency resolver still finds the clips. knife_iw6 also holds clips no override uses (the
+  `KnifeStabFinger*` / `KnifeStabTable*` five-finger-fillet set, `Fire`, `FireDirect`, `Ejection`, `Equip_S`).
+- Kali Sticks (`9200`) carry their own clips; the Sai (`30882`) uses its own plus 9 of the Kali Sticks'.
+- The base controllers are built around these weapons: `Basic_Melee_1P` (pathID 48, 178 clips) uses 14
+  knife_iw6 and 8 shovel (`003`) clips as its default state clips, and its string table still names the
+  sources (`Assets/COD_Models/Weapons/MeleeWeapon/MeleeWeapon_001_Knife_iw6/5.0/1p/...FBX`,
+  `MeleeWeapon_003_Shovel/5.0/1P/...`). The rest are shared: `animations/1p` (64), `_codm_shared`
+  placeholders (41), `br/br_pickup` (13), gadget bundles. Kali Sticks, Sai and Katana CXB use
+  `Basic_Melee_Double_1P` (pathID 49, 153 clips, 7 from knife_iw6 and 9 from the Kali Sticks).
+- **Third-person body clips** sit in the same bundles (knife_iw6: 68 `MeleeWeapon_001_Knife_BR_M_*`, the
+  Kali Sticks 110) and bind to the character skeleton. Each weapon ships three more override controllers
+  for the character's Animator: `_3P` (base `Basic_3P`, pathID 13), `_3P_MP` (`Basic_3P_MP`, 32) and
+  `_3P_ADV` (`Basic_3P_Advanced`, 27); the Karambit's `_3P` takes 71 clips from knife_iw6, 17 from the
+  Butterfly Knife (`7007`) and 30 from `animations/br`. `codm export` does not write them: no Animator in
+  a weapon bundle has that skeleton (they are the "Bindings exist but paths didn't resolve" warnings).
+- These launch-era clips use the quantized format (AnimationClip below): 22 of knife_iw6's 41 1P clips and
+  every family member's own Equip / Inspection. Later melee (Kali Sticks, Sai, Butterfly Knife, Bright
+  Blade `30188`, Katana CXB) store plain streamed curves.
+
 ## AnimationClip
 
 ### ClipMuscleConstant
@@ -155,43 +181,70 @@ Clip (StreamedClip, DenseClip, ConstantClip)      stock
 prefix            ~0xC00 bytes, zeros and 1.0f runs
 quantized blocks  repeated:
                     u32 numChannels
-                    f32 min, f32 max
+                    f32 min, f32 range
                     u32 flag (= 3)
                     u32 nb
-                    byte[nb * 4]        uint16 samples, dequantised min..max, frames x channels
+                    byte[nb * 4]        uint16 samples q, value = min + range * q / 65535, frames x channels
 trailer           ~2.6 KB (0xFF runs, a 0xA1 marker)
 ClipMuscleConstant trailing fields
 AnimationClipBindingConstant               found by scanning for a plausible binding list
 AnimationEvents
 ```
 
-- The sum of `numChannels` over the blocks equals the `DenseClip` "extra" field; the bindings' curve
-  index space is `streamed + dense + constant`.
-- `CodmQuantizedDense` decodes the blocks into `DenseClip.m_SampleArray`, keeps the raw samples
-  (`m_CodmRawSampleArray`, block mins/maxs/sizes) and chooses where the dense window sits inside the
-  binding index space by scoring candidate offsets against the binding dimensions
-  (`posRot` / `scale` / `dist` in the log). `TrySeekToAnimationClipBindingConstant` prefers a
-  non-empty binding list; empty lists are only accepted when the muscle clip has no curve data.
-- The 3-channel block is typically `Bone01.P` (weapon position), the large block the rotations of the
-  whole arm chain. `m_Codm3chSpanFactor` and `CodmBone01PosDecode` are A/B switches for alternative
-  position decodes; stock linear dequantisation is the default.
+- The sum of `numChannels` over the blocks equals the `DenseClip` "extra" field. The StreamedClip of
+  these clips is empty (2 words); all motion is in the blocks.
+- **The quantized channels are the last ones of the binding curve space**: they start at
+  `binding dims - channels`, in binding order. The `ConstantClip` covers curve index 0 onwards; the
+  channels between the two (mostly constant bone positions, a few finger rotations) carry no data and
+  stay at the bind pose. Knife `Idle`: constant 0..285, nothing 285..380, quantized 380..467 = a 3-channel
+  block (`Bone01` position) and an 84-channel block (the arm, hand, finger and `Bone01` rotations).
+- The second header float is the block's **range**, not its max. Read as a max, every rotation comes out
+  as about `0.26 + 1.4 * true` (quaternion lengths 1.7 to 2.1); read as a range, every rotation binding
+  in the window is a unit quaternion to 0.0001 (uint16 precision). Found 2026-10-28 on the knife family;
+  the same holds for all 450 quantized clips sampled across melee and launch-era guns (always 2 blocks,
+  flag 3).
+- `CodmQuantizedDense` decodes the blocks with (min, range), places them at the tail and **checks** each
+  clip: every block must start on a binding boundary and every rotation binding in the window must have
+  a mean |length - 1| of at most 0.01. A clip that passes is marked `DenseClip.m_CodmAbsolute`: its
+  samples are absolute poses, so the export-time rewindow and the idle bake leave it alone. A clip that
+  fails (warning `CODM quantized clip ...: <reason>; using the legacy decode`) takes the legacy path
+  below. Clips seen failing: position-only clips (aiming sway, scene cameras, arm references, shell
+  ejections: nothing to check) and a few 3P/AI clips with more channels than bindings.
+- `LegacyAnimDecode` in the config, or `codm --legacy-anim`, sends every clip through the legacy path;
+  it reproduces the pre-2026-10-28 exports byte for byte.
+- `TrySeekToAnimationClipBindingConstant` prefers a non-empty binding list; empty lists are only accepted
+  when the muscle clip has no curve data.
 
-### Idle-relative bake (`CodmDenseIdleRelative`)
+Checked on exports (the weapon bone's offset in the hand bone's space, which a held weapon keeps):
+knife_iw6 and the karambit hold the knife at the streamed clips' grip in every quantized clip (Fire went
+from 38.7 cm of drift to 1.1, Sprint from a mirrored grip to 0.08 cm, Inspection from 105 degrees to 1.6),
+and Idle, Fire and OpenDoor start and end on the FireLeft idle pose without any bake. The DL Q33 base
+holds the gun at its plain clips' grip (the legacy reload threw it 246 cm off the hand) and its reload
+moves the magazine 162.60 cm, as the Black Noir's plain reload does (legacy: 63.4).
 
-Hollow Equip / Inspect clips store deltas, not absolute poses, and the absolute idle pose is not in the
-blob. At export the dense samples are rebaked relative to an idle reference:
+### Legacy decode and idle bake (`CodmDenseIdleRelative`)
+
+The legacy path is the reading worked out in July to September 2026: the second header float as the
+block's max (`value = min + (max - min) * q / 65535`), 3-channel blocks at half that span
+(`ThreeChannelHalfSpan`), the window inside the binding index space picked by scoring candidate offsets
+(`posRot` / `scale` / `dist` in the log, rewindowed at export with bone paths), and an idle bake at
+export. It rested on the premise that hollow Equip / Inspect clips store deltas and that the absolute
+idle pose is not in the blob; the wrong dequantisation produced exactly that impression. It now runs
+only for clips that fail the check or with `LegacyAnimDecode`:
 
 | `CodmBakeMode` | Output |
 |---|---|
-| `Absolute` | quantized dense used as is |
+| `Off` | quantized dense used as is |
 | `IdleRelativeEnd` (default) | `idle + (dense[f] - dense[last])`, clip ends on idle |
-| `DeltaFromIdle` | `idle + dense[f]` |
+| `IdlePlusDense` | `idle + dense[f]` |
 | `IdleRelativeStart` | `idle + (dense[f] - dense[0])` |
-| `Static` | idle on every frame (control) |
+| `IdleStatic` | idle on every frame (control) |
 
 Idle sources, in order: Animator/Avatar local TRS (Unity WriteDefaults, `PreferWriteDefaultsIdle`),
 a `Fire*` streamed clip from the same selection (`FindIdleReference`), and the `ConstantClip` as last
-resort. `ModelConverter` picks this automatically ("idle=auto" in the log).
+resort. `ModelConverter` picks this automatically ("idle=auto" in the log). The research switches
+`m_Codm3chSpanFactor`, `CodmBone01PosDecode`, `ThreeChannelAsHalf`, `CodmBone01BrhCompensate` and
+`CodmWeaponHandFollow` (all off by default) assume legacy values.
 
 ### ConstantClip layout
 
@@ -201,12 +254,13 @@ accordingly and never writes constant keys over dense channels (Equip must start
 
 ### Weapon attach bones
 
-- Hollow clips bind `Bip01/Bone_RightHand/Bone01/Bone02` (CRC 0x4714F6A0) but the shipped 1P prefab
+- Quantized clips bind `Bip01/Bone_RightHand/Bone01/Bone02` (CRC 0x4714F6A0) but the shipped 1P prefab
   has no `Bone02` transform; `ModelConverter` injects an animation-only `Bone02` under `Bone01`.
 - Karambit-style skins keep `Bone_RightHand` static at a 90 degree Z rest while the clips are authored
-  in knife space; `CodmBone01BrhCompensate` can rewrite `Bone01` by the inverse rest rotation.
-- `CodmWeaponHandFollow` (off by default) re-anchors `Bone01` to `b_RightHand` when quantized clips
-  under-drive the weapon.
+  in knife space; `CodmBone01BrhCompensate` (legacy research switch, off) can rewrite `Bone01` by the
+  inverse rest rotation.
+- `CodmWeaponHandFollow` (legacy research switch, off) re-anchors `Bone01` to `b_RightHand`; it was a
+  workaround for the legacy decode under-driving the weapon.
 
 ### Weapon attach points (attachments)
 

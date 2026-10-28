@@ -604,6 +604,47 @@ materials by name.
 At the user's request the tool's output replaced the Lotus work folder's `fx\` (the effects had not been used
 yet). The skin's survey notes, corrected, are at the end of its `_INDEX.txt`.
 
+## 2026-10-28: launch-era melee animations, and the quantized clip decode fixed
+
+The user asked where the base animations of the oldest melee weapons live (knife_iw6, karambit, Noir Blade,
+Kali Sticks, Combat Knife, Candy Cane, KnifeS, Sai, Bowie): earlier attempts had only extracted them partly.
+
+**Where they are** (format notes, AnimatorController): the knife family's 1P override controllers point almost
+every state at knife_iw6's main bundle; the shared `Basic_Melee_1P` controller itself is built from knife_iw6
+and shovel clips; the third-person body clips sit in the same bundles and drive the character through three
+3P override controllers per weapon, which `codm export` never writes. The weapon exports did find their 1P
+clips (18 to 23 per family member).
+
+**Why only partly:** the launch-era clips use CODM's quantized format, and the decoder read it wrong. The
+second float of each block header is the block's range, not its max, and the quantized channels are the last
+ones of the binding curve space. Evidence: read as a max, quaternion lengths come out at 1.7 to 2.1 and every
+finger rotation as `0.264 + 1.398 * true` (the same factor on three bones); read as a range, every rotation
+binding of every quantized clip is a unit quaternion to 0.0001. With the old reading the knife drifted off
+the hand (Fire 38.7 cm, FireDirect 63, KnifeStabFingerPutDown 161, Sprint mirrored, Inspection 105 degrees);
+with the new one every clip holds the streamed clips' grip and Idle, Fire and OpenDoor start and end on idle
+without a bake. The months of hollow-clip work (idle bake, half-span positions, window scoring, Bone01
+compensation) were compensating for the dequantisation.
+
+**Changed:** `CodmQuantizedDense` decodes (min, range), places the channels at the tail and checks every clip
+(blocks on binding boundaries, unit quaternions); clips that pass are `m_CodmAbsolute` and skip the rewindow
+and the idle bake, clips that fail get a warning and the old path. `LegacyAnimDecode` (config) /
+`--legacy-anim` (CLI) sends every clip through the old path; it reproduces the previous knife and karambit
+exports byte for byte (41 + 21 casts). The new output equals the scratch build the grip checks ran on.
+
+**Verified:** knife_iw6, karambit (grip of every quantized clip, idle continuity), shovel (all own clips pass),
+DL Q33 base (all own clips pass; gun grip constant where the legacy reload threw it 246 cm off the hand;
+reload magazine travel 162.60 cm, equal to the Black Noir's plain reload, legacy 63.4; the bolt and empty
+reload move the gun in the hand as the Black Noir's plain clips do). Fallbacks seen, all in shared dependency
+bundles: position-only clips (`AR_1P_M_AimingMove*`, `*_SceneCamera`, `*_Arm_Reference`, `Ejection0n_ToGround`)
+and 3P/AI clips with more channels than bindings (`ThrowWeapon_167_ShockStick_3P_ShockHit*`,
+`Skydive_M_3P_Open`, two `ai_M4A1_*`). Scope: 450 of 1 456 sampled clips are quantized, a third of the
+launch-era guns' (AK-47 9/24, RPD 14/31, ICR 12/21, Locus 14/33, DL Q33 base 17/42). Finished IW4 ports are
+unaffected: the Black Noir and Katana CXB use no quantized clips, the Lotus Flames only in three unported
+side clips.
+
+Not verified: the 3P body clips beyond the unit-quaternion check (they are not exported), and the position
+channels of the clips that fall back.
+
 ## Open items
 
 - Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as
@@ -626,6 +667,10 @@ yet). The skin's survey notes, corrected, are at the end of its `_INDEX.txt`.
 - Name the switch values inside the class banks (per-weapon split of `wpn_*`), and widen event
   name recovery (90 of several thousand ids named).
 - Source of the characters' first-person arms mesh, and of the Beam Saber's (`meleeweapon_59823`).
+- Animation: export a weapon's third-person body clips (the `_3P` / `_3P_MP` / `_3P_ADV` overrides) onto a
+  character skeleton; let the catalog show knife_iw6 as the animation base of the knife family; decode the
+  position-only quantized clips (they fall back today because there is no rotation to check them by); the
+  finger rotations in the gap between the ConstantClip and the quantized channels carry no data.
 - Dependency resolution with components included follows the other weapons' attachments in the
   shared buckets too (60-pak limit reached for the DL Q33); scope it to the exported objects.
 - Materials: normal (`_BumpMapPakced`, channel layout unknown) and metal/roughness (`_M`) maps; camo

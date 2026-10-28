@@ -7,6 +7,14 @@ themselves were archived outside the repository; the knowledge they produced is 
 `CodmBone01PosDecode.cs`, `CodmBone01BrhCompensate.cs` and `AssetStudioUtility/CodmWeaponHandFollow.cs`,
 and is summarised in [codm-formats.md](codm-formats.md).
 
+**Superseded on 2026-10-28.** The probes below read the second float of each quantized block header as the
+block's max. It is the block's range, and the quantized channels are the last ones of the binding curve
+space. With those two corrections the clips are absolute poses: the "hollow clips store deltas" premise, the
+idle bake, the 3-channel half span, the window scoring and the Bone01 compensations were all answers to the
+wrong dequantisation. The old reading is kept as the legacy decode (`LegacyAnimDecode`); see
+[codm-formats.md](codm-formats.md#layout-after-the-stock-clip) and the 2026-10-28 entry of
+[progress.md](progress.md).
+
 ## Test material
 
 - Knife: `cod_models/weapons/meleeweapon/meleeweapon_992_knife_iw5` (streaming), prefab `MeleeWeapon_001_Knife_iw6_1P`, 119 clips, 5 animators.
