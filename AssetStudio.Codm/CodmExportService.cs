@@ -611,7 +611,7 @@ namespace AssetStudio.Codm
             // the weapon's own banks and those of its base chain (a skin without custom sounds uses the base's)
             var own = w.Banks.Concat(w.Ancestors().SelectMany(a => a.Banks)).Where(b => b.HasHirc).ToList(); // 32-byte header-only banks carry nothing
             if (!o.BankVariants)
-                own = own.Where(b => !b.IsNumeric || System.Text.RegularExpressions.Regex.IsMatch(b.Name, @"^\d+(p\d)?$")).ToList();
+                own = own.Where(b => (!b.IsNumeric && b.KindPrefix == null) || System.Text.RegularExpressions.Regex.IsMatch(b.Name, @"^(m|t|a)?\d+(p\d)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToList();
             var banks = own.Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             if (o.ClassBanks)
                 banks.AddRange(w.SharedBanks.Select(b => b.Name).Where(n => !banks.Contains(n, StringComparer.OrdinalIgnoreCase)));

@@ -362,21 +362,44 @@ namespace AssetStudio.Codm
             }
         }
 
+        /// <summary>Bank name prefix of a weapon kind: main weapons use the bare id (130), melee m01, throw t04, assi a21.</summary>
+        private static string BankPrefix(WeaponKind kind)
+        {
+            switch (kind)
+            {
+                case WeaponKind.MeleeWeapon: return "m";
+                case WeaponKind.ThrowWeapon: return "t";
+                case WeaponKind.AssiWeapon: return "a";
+                default: return null;
+            }
+        }
+
         private void LinkBanks(WwiseIndex wwise)
         {
             var hasTokens = wwise.BankTokens.Count > 0;
+            // base weapon ids repeat across kinds (meleeweapon_004_karambit, mainweapon_004_m21ebr): a bare-id bank
+            // belongs to the main weapon whenever one has that id
+            var mainIds = new HashSet<int>(Weapons.Where(x => x.Kind == WeaponKind.MainWeapon).Select(x => x.Id));
             foreach (var w in Weapons)
             {
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                // 1. banks whose event names mention this weapon (play_wpn_locus_fire_1p): exact and unambiguous
+                // 1. banks whose event names mention this weapon (play_wpn_locus_fire_1p). A prefixed bank (m30882) only
+                //    names weapons of its own kind: across kinds a hit is a 32-bit name collision (m30882's
+                //    stop_wpn_melee_sai_inspection_1p hashes like stop_weapon_s36ikun_attack_1p)
+                var prefix = BankPrefix(w.Kind);
                 if (hasTokens)
                 {
                     foreach (var tok in new[] { w.Name, NormalizeName(w.Name) }.Distinct(StringComparer.OrdinalIgnoreCase))
                         foreach (var b in wwise.BanksForToken(tok))
-                            if (seen.Add(b.Name)) w.Banks.Add(b);
+                            if ((b.KindPrefix == null || string.Equals(b.KindPrefix, prefix, StringComparison.OrdinalIgnoreCase)) && seen.Add(b.Name))
+                                w.Banks.Add(b);
                 }
-                // 2. numeric banks matching the id, unless the bank was identified as another weapon's by name
-                foreach (var b in wwise.BanksForNumericId(w.Id))
+                // 2. the kind's own banks (m01, t04...), then bare-id banks: a main weapon's, or a skin's with an id
+                //    no main weapon has (73256), unless the bank was identified as another weapon's by name
+                if (prefix != null)
+                    foreach (var b in wwise.BanksForKindId(prefix, w.Id))
+                        if (seen.Add(b.Name)) w.Banks.Add(b);
+                foreach (var b in prefix == null || !mainIds.Contains(w.Id) ? wwise.BanksForNumericId(w.Id) : Enumerable.Empty<WwiseBankInfo>())
                 {
                     if (hasTokens && wwise.BankTokens.TryGetValue(b.Name, out var toks) && toks.Count > 0 && !toks.Contains(w.Name) && !toks.Contains(NormalizeName(w.Name)))
                         continue;
@@ -386,7 +409,7 @@ namespace AssetStudio.Codm
                 var names = NameTokens(w);
                 foreach (var b in wwise.Banks)
                 {
-                    if (b.IsNumeric || seen.Contains(b.Name))
+                    if (b.IsNumeric || b.KindPrefix != null || seen.Contains(b.Name))
                         continue;
                     var tokens = b.Name.ToLowerInvariant().Split('_', '-', ' ');
                     var hit = tokens.Any(t => t.Length >= 4 && names.Any(n => n == t || (n.Length >= 4 && (n.StartsWith(t) || t.StartsWith(n)))));
@@ -404,7 +427,7 @@ namespace AssetStudio.Codm
                 var members = family.Concat(new[] { family.Key }).Distinct().ToList();
                 foreach (var member in members)
                 {
-                    foreach (var b in member.Banks.Where(b => b.IsNumeric))
+                    foreach (var b in member.Banks.Where(b => b.IsNumeric || b.KindPrefix != null))
                     {
                         if (!referencedCache.TryGetValue(b.Name, out var refs))
                             referencedCache[b.Name] = refs = wwise.ReferencedBankNames(b);

@@ -27,6 +27,9 @@ namespace AssetStudio.Codm.Wwise
         }
 
         public static readonly string[] Prefixes = { "play_wpn_", "play_weapon_", "play_", "stop_wpn_", "stop_weapon_", "stop_", "wpn_", "weapon_" };
+        /// <summary>Extra prefixes for melee banks (m30882: play_wpn_melee_sai_fire1_1p). Only tried on those banks:
+        /// over every weapon name and bank they produce 32-bit collisions (play_wpn_melee_hs2126triumphantbeat_throw_player).</summary>
+        public static readonly string[] MeleePrefixes = { "play_wpn_melee_", "stop_wpn_melee_" };
         public static readonly string[] Actions =
         {
             "fire", "fire_loop", "fire_tail", "fire_start", "fire_end", "fire_stop", "fireloop", "tail", "shoot", "shot",
@@ -44,11 +47,12 @@ namespace AssetStudio.Codm.Wwise
             "firstattack", "first_attack", "secondattack", "second_attack", "thirdattack", "third_attack", "attack_a", "attack_b", "attack_c",
             "putdown", "put_down", "inspection_1", "inspection_2", "inspection1", "inspection2", "clipin", "clipout", "clip_in_1", "clip_out_1",
             "boltback", "bolt_back", "boltbackandrelease", "bolt_back_and_release", "firing", "fs", "footstep", "footsteps", "step",
+            "fire1", "fire2", "fire3", "fire4", "attack_01", "attack_02", "attack_03", "inspection_special", "kill_sfx",
         };
         public static readonly string[] Suffixes =
         {
             "", "_1p", "_3p", "_fp", "_tp", "_player", "_npc", "_plr", "_near", "_far", "_mid", "_close", "_dist", "_lr", "_in", "_out", "_int", "_ext",
-            "_br", "_mp", "_sp", "_pve", "_a", "_b", "_c", "_1", "_2", "_3", "_01", "_02", "_loop", "_start", "_end", "_stop", "_1p_a", "_1p_b", "_3p_a", "_3p_b",
+            "_br", "_3p_br", "_mp", "_sp", "_pve", "_a", "_b", "_c", "_1", "_2", "_3", "_01", "_02", "_loop", "_start", "_end", "_stop", "_1p_a", "_1p_b", "_3p_a", "_3p_b",
         };
         public static readonly string[] Classes = { "ar", "smg", "lmg", "sniper", "shotgun", "pistol", "launcher", "melee" };
 
@@ -90,7 +94,7 @@ namespace AssetStudio.Codm.Wwise
         private static readonly string[] QuickSuffixes = { "", "_1p", "_3p", "_a", "_1", "_player", "_lr" };
 
         /// <summary>Which of the tokens appear in this bank's event names (cheap pass over a few actions). Hits are remembered as names.</summary>
-        public HashSet<string> IdentifyTokens(WwiseBank bank, IEnumerable<string> tokens)
+        public HashSet<string> IdentifyTokens(WwiseBank bank, IEnumerable<string> tokens, bool meleeBank = false)
         {
             var targets = new HashSet<uint>(bank.Events.Select(e => e.Id));
             var hits = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -100,7 +104,7 @@ namespace AssetStudio.Codm.Wwise
                 foreach (var t in new[] { tok, tok.Replace("_", "") })
                 {
                     var found = false;
-                    foreach (var pre in new[] { "play_wpn_", "play_weapon_", "play_", "stop_wpn_", "stop_weapon_", "stop_" })
+                    foreach (var pre in new[] { "play_wpn_", "play_weapon_", "play_", "stop_wpn_", "stop_weapon_", "stop_" }.Concat(meleeBank ? MeleePrefixes : new string[0]))
                     {
                         foreach (var act in QuickActions)
                         {
@@ -126,7 +130,7 @@ namespace AssetStudio.Codm.Wwise
         /// Try generated names against every event, action and switch id of a bank. Tokens are the
         /// weapon names and ids that could appear in this bank's event names.
         /// </summary>
-        public int Guess(WwiseBank bank, IEnumerable<string> tokens, bool includeClasses = true)
+        public int Guess(WwiseBank bank, IEnumerable<string> tokens, bool includeClasses = true, bool meleeBank = false)
         {
             var targets = new HashSet<uint>(bank.Events.Select(e => e.Id));
             foreach (var c in bank.Containers.Values)
@@ -159,7 +163,7 @@ namespace AssetStudio.Codm.Wwise
                     found++;
                 }
             }
-            foreach (var pre in Prefixes)
+            foreach (var pre in Prefixes.Concat(meleeBank ? MeleePrefixes : new string[0]))
             {
                 foreach (var tok in toks)
                 {

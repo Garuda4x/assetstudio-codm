@@ -22,6 +22,13 @@ namespace AssetStudio.Codm.Wwise
         public bool IsNumeric => NumericBase >= 0;
         /// <summary>For banks named like 130, 130a, 130p3: the leading number; otherwise -1.</summary>
         public int NumericBase { get; set; } = -1;
+        /// <summary>
+        /// Melee, throw and assi weapons name their banks with a prefix: m01, m30882a (melee), t04 (throw), a21p3
+        /// (assi); the numbers are those weapons' ids. The prefix and number of such a bank; null / -1 otherwise.
+        /// (sp&lt;n&gt; banks are not special weapons: none of their numbers is a special weapon id.)
+        /// </summary>
+        public string KindPrefix { get; set; }
+        public int KindBase { get; set; } = -1;
 
         public override string ToString() => Name + (Language != null ? $" [{Language}]" : "") + (HighQuality ? " [HQ]" : "");
     }
@@ -35,6 +42,7 @@ namespace AssetStudio.Codm.Wwise
     public sealed class WwiseIndex
     {
         private static readonly Regex NumericBank = new Regex(@"^(\d+)[a-z]*(p\d)?$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex KindBank = new Regex(@"^(m|t|a)(\d+)[a-z]*(p\d)?$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public List<WwiseBankInfo> Banks { get; } = new List<WwiseBankInfo>();
         /// <summary>wem id -> first bank that embeds it.</summary>
@@ -129,6 +137,12 @@ namespace AssetStudio.Codm.Wwise
             var m = NumericBank.Match(name);
             if (m.Success)
                 info.NumericBase = int.Parse(m.Groups[1].Value);
+            var k = KindBank.Match(name);
+            if (k.Success)
+            {
+                info.KindPrefix = k.Groups[1].Value.ToLowerInvariant();
+                info.KindBase = int.Parse(k.Groups[2].Value);
+            }
             Banks.Add(info);
 
             foreach (var media in bank.Embedded)
@@ -147,6 +161,12 @@ namespace AssetStudio.Codm.Wwise
         public IEnumerable<WwiseBankInfo> BanksForNumericId(int id)
         {
             return Banks.Where(b => b.NumericBase == id);
+        }
+
+        /// <summary>Banks named &lt;prefix&gt;&lt;id&gt;, with letter and p3 variants: m01, m30882a, t04.</summary>
+        public IEnumerable<WwiseBankInfo> BanksForKindId(string prefix, int id)
+        {
+            return Banks.Where(b => b.KindBase == id && string.Equals(b.KindPrefix, prefix, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>Prefer the first copy in the preferred language, then non-HQ, then anything.</summary>
@@ -234,7 +254,7 @@ namespace AssetStudio.Codm.Wwise
         {
             if (Names == null) Names = WwiseNames.Load(cfg);
             var tokens = new HashSet<string>(weaponTokens.Where(t => !string.IsNullOrEmpty(t)), StringComparer.OrdinalIgnoreCase);
-            var bankNames = Banks.Where(b => b.HasHirc && (b.IsNumeric || b.Name.StartsWith("wpn_", StringComparison.OrdinalIgnoreCase)))
+            var bankNames = Banks.Where(b => b.HasHirc && (b.IsNumeric || b.KindPrefix != null || b.Name.StartsWith("wpn_", StringComparison.OrdinalIgnoreCase)))
                 .Select(b => b.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             BankTokens.Clear();
             var done = 0; var named = 0;
@@ -243,13 +263,15 @@ namespace AssetStudio.Codm.Wwise
                 var info = PreferredCopy(name);
                 WwiseBank bank;
                 try { bank = WwiseBank.Parse(info.Path); } catch (Exception) { continue; }
-                var hit = Names.IdentifyTokens(bank, tokens);
+                var meleeBank = KindBank.IsMatch(name) && name.StartsWith("m", StringComparison.OrdinalIgnoreCase);
+                var hit = Names.IdentifyTokens(bank, tokens, meleeBank);
                 var full = new HashSet<string>(hit, StringComparer.OrdinalIgnoreCase);
+                var weaponBank = IsNumericBankName(name) || KindBank.IsMatch(name);
                 if (IsNumericBankName(name))
                     full.Add(name.TrimEnd('a','b','c','d','e','f','g','h','i','j','p','3'));
-                else
+                else if (!weaponBank)
                     full.UnionWith(WwiseNames.Classes);
-                named += Names.Guess(bank, full, includeClasses: !IsNumericBankName(name));
+                named += Names.Guess(bank, full, includeClasses: !weaponBank, meleeBank: meleeBank);
                 BankTokens[name] = hit;
                 done++;
                 if (done % 100 == 0) progress?.Invoke($"Wwise names: {done}/{bankNames.Count} banks, {Names.Count} names");
