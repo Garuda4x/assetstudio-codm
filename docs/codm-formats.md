@@ -455,3 +455,8 @@ and has to be read off per weapon family:
 - `CodmExportService` exports one Cast model per `Animator` with the clips its override controller
   references (fallback: every clip in the same file), one per renderer-only root, every `Texture2D`,
   and the wems of the linked banks.
+- Every exported model's root sits at the origin. Some prefab roots keep their position from the
+  authoring scene (Sai 1P at (-74.02, -41.30, 1.0) m and Karambit 1P at (0.61, -18.77, 0.51) m in Cast's
+  Z-up axes); the game parents the weapon to the camera and never uses it. The export moves the root,
+  and with it the meshes (placed through the frame hierarchy) and any root translation keys; the log
+  says `root moved to the origin from (...)`. Root rotations are kept.

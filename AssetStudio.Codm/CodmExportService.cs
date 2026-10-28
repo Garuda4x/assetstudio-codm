@@ -312,6 +312,7 @@ namespace AssetStudio.Codm
                     {
                         var conv = new ModelConverter(animator, cfg.ImageFormat, clips.Length > 0 ? clips : null, materialFallback);
                         CameraTrackMerger.Merge(conv, log);
+                        MoveRootToOrigin(conv, name, log);
                         var modelDir = Path.Combine(dir, name);
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
                         report.Models.Add(modelDir);
@@ -358,6 +359,7 @@ namespace AssetStudio.Codm
                     try
                     {
                         var conv = new ModelConverter(go, cfg.ImageFormat, null, materialFallback);
+                        MoveRootToOrigin(conv, name, log);
                         var modelDir = Path.Combine(dir, name);
                         CastExporter.Export(modelDir, name, conv, cfg.ScaleFactor);
                         report.Models.Add(modelDir);
@@ -479,6 +481,28 @@ namespace AssetStudio.Codm
                     return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Some prefab roots keep the position they had in the authoring scene (Sai 1P at (74, 1, 41) m in
+        /// Unity space, Karambit 1P 18.8 m out); the game parents the weapon to the camera and never uses it.
+        /// Move the root to the origin. Meshes are placed through the frame hierarchy, so they move with it;
+        /// translation keys on the root, if a clip has any, shift by the same amount.
+        /// </summary>
+        private static void MoveRootToOrigin(ModelConverter conv, string name, Action<string> log)
+        {
+            var root = conv.RootFrame;
+            if (root == null || root.LocalPosition.Length() < 1e-4f)
+                return;
+            var offset = root.LocalPosition;
+            root.LocalPosition = Vector3.Zero;
+            var rootPath = root.Path;
+            foreach (var anim in conv.AnimationList)
+                foreach (var track in anim.TrackList.Where(t => t.Path == rootPath))
+                    foreach (var key in track.Translations)
+                        key.value -= offset;
+            // the Cast file's Z-up axes, as Blender shows them
+            log($"[Export] {name}: root moved to the origin from ({offset.X:0.###}, {-offset.Z:0.###}, {offset.Y:0.###}) m (Z up)");
         }
 
         private static int CountTransforms(GameObject go)

@@ -654,6 +654,13 @@ comes from its fuller copy (6 more hold-point bones: `HoldPoint`, `HDPoint`, `Fo
 
 Exports for the user to check: `export/meleeweapon_004_karambit` and `export/meleeweapon_30882_sai`.
 
+The user checked both in Blender: the animations look right, but the skeletons sat far from the origin (Sai root
+at (-74.02, -41.30, 1.0) m, Karambit at (0.61, -18.77, 0.51) m, Z up). Those are the prefab roots' own positions
+from the authoring scene, unkeyed by any clip; the Katana CXB and Black Noir roots are at 0, and exports from
+before this session have the same offset, so it was never a decode issue. The export now moves every root to the
+origin (meshes and root keys with it). Checked: root at 0, every other bone and all 21 + 38 clips' curves
+identical, vertices shifted by exactly the old offset, Katana CXB unchanged.
+
 ## Open items
 
 - Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as
