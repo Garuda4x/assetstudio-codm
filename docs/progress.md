@@ -645,6 +645,15 @@ side clips.
 Not verified: the 3P body clips beyond the unit-quaternion check (they are not exported), and the position
 channels of the clips that fall back.
 
+**Sai export fixed on the way** (not a decode issue, the Sai has no quantized clips): its 1P model wrote 0 of 39
+clips because two `cn13` copies of `MeleeWeapon_30882_Sai_1P` resolve 39 clips each and the tie-break took the
+stripped one (root and mesh, 2 bones). On equal clip counts the exporter now prefers the larger hierarchy:
+the Sai writes 38 1P clips. Knife and karambit exports are unchanged by it; the DL Q33 base's 3P model now
+comes from its fuller copy (6 more hold-point bones: `HoldPoint`, `HDPoint`, `ForHoldPoint`, `HoldPoint_ADV3P`,
+`HoldPoint_ForMVP`, `CopyForPoint`).
+
+Exports for the user to check: `export/meleeweapon_004_karambit` and `export/meleeweapon_30882_sai`.
+
 ## Open items
 
 - Effect renderers: the material slots of `ParticleSystemRenderer` in the 1.9.57 effect bundles read as

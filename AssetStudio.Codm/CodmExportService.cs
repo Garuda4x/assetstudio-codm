@@ -260,7 +260,10 @@ namespace AssetStudio.Codm
                 : candidates.GroupBy(c => SafeName(c.go.m_Name), StringComparer.OrdinalIgnoreCase)
                     .Select(g =>
                     {
-                        var best = g.OrderByDescending(c => c.clips.Length).ThenBy(c => cfg.SourceRank(SourceOf(c.file))).First();
+                        // equal clip counts: a stripped copy (the root and its mesh, no skeleton) can sit next to
+                        // the full rig in the same bundle; the larger hierarchy is the one the clips bind to
+                        var best = g.OrderByDescending(c => c.clips.Length).ThenByDescending(c => CountTransforms(c.go))
+                            .ThenBy(c => cfg.SourceRank(SourceOf(c.file))).First();
                         if (HasMeshInTree(best.go))
                             return best;
                         // the prefab with the controller can leave its renderer's mesh empty (filled in at
@@ -476,6 +479,19 @@ namespace AssetStudio.Codm
                     return true;
             }
             return false;
+        }
+
+        private static int CountTransforms(GameObject go)
+        {
+            if (go.m_Transform == null)
+                return 0;
+            int n = 1;
+            foreach (var c in go.m_Transform.m_Children)
+            {
+                if (c.TryGet(out var t) && t.m_GameObject.TryGet(out var child))
+                    n += CountTransforms(child);
+            }
+            return n;
         }
 
         private static bool HasRendererInTree(GameObject go)
