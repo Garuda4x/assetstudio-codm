@@ -19,8 +19,10 @@ namespace AssetStudio
     }
 
     /// <summary>
-    /// Rebake CODM quantized dense samples relative to an idle pose.
-    /// Absolute idle for hollow Equip/Inspect is NOT in the CODM blob (prefix/trailer/ConstantClip
+    /// Rebake CODM quantized dense samples relative to an idle pose. Only clips that took the legacy
+    /// decode (<see cref="CodmQuantizedDense.LegacyDecode"/> or a failed check) are baked: with the
+    /// (min, range) reading the samples are absolute and the "hollow clip" premise below does not hold.
+    /// Legacy premise: absolute idle for hollow Equip/Inspect is NOT in the CODM blob (prefix/trailer/ConstantClip
     /// /muscle StartX / ValueArrayReferencePose). Engine-side sources:
     /// <list type="bullet">
     /// <item><see cref="PreferWriteDefaultsIdle"/> — Animator/Avatar local TRS (Unity WriteDefaults). Structural.</item>
@@ -194,6 +196,9 @@ namespace AssetStudio
             if (Mode == CodmBakeMode.Off)
                 return false;
             if (!IsCodmHydratedDense(target))
+                return false;
+            // (min, range) decode: the samples are absolute poses already.
+            if (target.m_MuscleClip.m_Clip.m_DenseClip.m_CodmAbsolute)
                 return false;
 
             var clip = target.m_MuscleClip.m_Clip;

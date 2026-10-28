@@ -7,15 +7,28 @@ namespace AssetStudio
     /// CoD Mobile stores quantized dense animation samples after the stock Clip
     /// (Streamed/Dense/Constant) and before ClipMuscleConstant trailing fields /
     /// ClipBindingConstant. Samples are uint16 grids in range blocks:
-    ///   uint numChannels, float min, float max, uint flag(=3), uint packed4BitSize,
+    ///   uint numChannels, float min, float range, uint flag(=3), uint packed4BitSize,
     ///   byte[packed4BitSize * 4]  // uint16 samples; size is 4× the 4-bit-equivalent length
-    /// Channel count across blocks equals the DenseClip "extra" field; binding curve
-    /// index space is streamed + dense + constant.
+    /// value = min + range * q / 65535. The channels are the last ones of the binding curve
+    /// space (offset = binding dims - channels). Each clip is checked: the blocks must end on
+    /// binding boundaries and every rotation binding in the window must decode to unit
+    /// quaternions. A clip that fails the check, or every clip with <see cref="LegacyDecode"/>,
+    /// takes the older reading: the second float as the block's max, a scored window, half-span
+    /// 3-channel blocks and the idle bake at export.
     /// </summary>
     public static class CodmQuantizedDense
     {
         private const uint BlockFlag = 3;
         private static int _blobEdgeLogCount;
+
+        /// <summary>
+        /// Decode every quantized clip the pre-2026-10-28 way (second header float as max, scored
+        /// window, idle bake). Set from the config key LegacyAnimDecode or codm --legacy-anim.
+        /// </summary>
+        public static bool LegacyDecode = false;
+
+        /// <summary>Largest mean |length - 1| of a rotation binding's quaternions that passes the check.</summary>
+        private const double UnitQuatTolerance = 0.01;
 
         /// <summary>
         /// [INVENTED/diagnostic] When true, blocks with exactly 3 channels decode uint16 samples
@@ -27,7 +40,7 @@ namespace AssetStudio
         public static bool ThreeChannelAsHalf = false;
 
         /// <summary>
-        /// When true (default), 3-channel quant blocks dequant with half the header span:
+        /// Legacy decode only. When true (default), 3-channel quant blocks dequant with half the header span:
         ///   value = min + 0.5*(max-min)*(q/65535)
         /// Bone01.P is always a lone 3ch block; Blender A/B (b01sweep 06_delta_span_0.5) matched
         /// held knife travel. Stock full-span deltas are ~2× too large. Header min/max are
@@ -36,7 +49,7 @@ namespace AssetStudio
         /// </summary>
         public static bool ThreeChannelHalfSpan = true;
 
-        public static bool TryApply(byte[] region, ClipMuscleConstant muscle, AnimationClipBindingConstant bindings)
+        public static bool TryApply(byte[] region, ClipMuscleConstant muscle, AnimationClipBindingConstant bindings, string clipLabel = null)
         {
             if (region == null || region.Length < 64 || muscle?.m_Clip == null)
                 return false;
@@ -62,7 +75,8 @@ namespace AssetStudio
             if (!TryFindPayload(region, frames, rate, out int payloadOff, out uint headerChannels))
                 return false;
 
-            if (!TryParseBlocks(region, payloadOff, frames, out var blocks, out int endOff))
+            bool legacy = LegacyDecode;
+            if (!TryParseBlocks(region, payloadOff, frames, legacy, out var blocks, out int endOff))
                 return false;
 
             // Prefix / trailer are still undecoded — store trailer + sample logs.
@@ -107,6 +121,21 @@ namespace AssetStudio
                     $"[AnimClip] CODM quant dense: headerChannels={headerChannels} blockSum={totalChannels}; using blockSum");
             }
 
+            var boundaries = GetBindingCurveBoundaries(bindings);
+            int bindDims = boundaries.Count > 0 ? boundaries[boundaries.Count - 1] : 0;
+            int constLen = constant.data.Length;
+            int ideal = bindDims - constLen - totalChannels;
+
+            int tailOffset = -1;
+            if (!legacy && !CheckTailWindow(blocks, boundaries, bindings, frames, out tailOffset, out var rejectReason))
+            {
+                Logger.Warning($"[AnimClip] CODM quantized clip {clipLabel ?? "?"}: {rejectReason}; " +
+                    "using the legacy decode (min/max, scored window, idle bake)");
+                legacy = true;
+                if (!TryParseBlocks(region, payloadOff, frames, true, out blocks, out endOff))
+                    return false;
+            }
+
             var samples = new float[frames * totalChannels];
             int col = 0;
             foreach (var b in blocks)
@@ -120,11 +149,6 @@ namespace AssetStudio
                 }
                 col += b.Channels;
             }
-
-            var boundaries = GetBindingCurveBoundaries(bindings);
-            int bindDims = boundaries.Count > 0 ? boundaries[boundaries.Count - 1] : 0;
-            int constLen = constant.data.Length;
-            int ideal = bindDims - constLen - totalChannels;
 
             // Keep raw samples so export can rewindow with Avatar path names.
             var raw = new float[samples.Length];
@@ -165,7 +189,7 @@ namespace AssetStudio
                     sb.Append("ch[");
                     sb.Append(blocks[i].Min.ToString("G4"));
                     sb.Append("..");
-                    sb.Append(blocks[i].Max.ToString("G4"));
+                    sb.Append((legacy ? blocks[i].Max : blocks[i].Min + blocks[i].Max).ToString("G4"));
                     sb.Append(']');
                 }
                 CodmDiagnostics.Warn($"[AnimClip] CODM quant blocks: {blocks.Count} ({sb}) sum={totalChannels}");
@@ -173,9 +197,14 @@ namespace AssetStudio
 
             int streamedOffset;
             string placeNote;
-            // Never trust "exact" Unity pack alone — Equip ideal=63 parks on scale/torso;
+            if (!legacy)
+            {
+                streamedOffset = tailOffset;
+                placeNote = "min/range, tail window, unit quaternions";
+            }
+            // Legacy: never trust "exact" Unity pack alone — Equip ideal=63 parks on scale/torso;
             // arm TRS live later in the binding list.
-            if (TryFindBestDenseWindow(boundaries, bindings, totalChannels, ideal, samples, frames, null, null,
+            else if (TryFindBestDenseWindow(boundaries, bindings, totalChannels, ideal, samples, frames, null, null,
                 out streamedOffset, out var scoreNote))
             {
                 placeNote = $"best({scoreNote},ideal={ideal})";
@@ -191,8 +220,9 @@ namespace AssetStudio
                 return false;
             }
 
-            SanitizeTransformSamples(samples, frames, totalChannels, streamedOffset, bindings);
+            SanitizeTransformSamples(samples, frames, totalChannels, streamedOffset, bindings, keepScale: !legacy);
 
+            dense.m_CodmAbsolute = !legacy;
             dense.m_CurveCount = (uint)totalChannels;
             dense.m_SampleArray = samples;
             dense.m_BeginTime = 0f;
@@ -230,7 +260,7 @@ namespace AssetStudio
             var dense = c.m_DenseClip;
             var streamed = c.m_StreamedClip;
             var bindings = clip.m_ClipBindingConstant;
-            if (dense?.m_CodmRawSampleArray == null || dense.m_CurveCount == 0)
+            if (dense?.m_CodmRawSampleArray == null || dense.m_CurveCount == 0 || dense.m_CodmAbsolute)
                 return false;
             if (streamed != null && streamed.data != null && streamed.data.Length > 2)
                 return false;
@@ -254,7 +284,7 @@ namespace AssetStudio
                 idlePose, out int streamedOffset, out var scoreNote))
                 return false;
 
-            SanitizeTransformSamples(samples, frames, width, streamedOffset, bindings);
+            SanitizeTransformSamples(samples, frames, width, streamedOffset, bindings, keepScale: false);
             dense.m_SampleArray = samples;
             if (streamed != null)
                 streamed.curveCount = (uint)streamedOffset;
@@ -545,7 +575,7 @@ namespace AssetStudio
         /// </summary>
         private static void SanitizeTransformSamples(
             float[] samples, int frames, int denseChannels, int streamedOffset,
-            AnimationClipBindingConstant bindings)
+            AnimationClipBindingConstant bindings, bool keepScale)
         {
             if (bindings?.genericBindings == null || samples == null)
                 return;
@@ -569,8 +599,10 @@ namespace AssetStudio
                 if (b.typeID != ClassIDType.Transform)
                     continue;
 
-                if (b.attribute == 3) // scale — keep bind-pose scale
+                if (b.attribute == 3) // scale — legacy: keep bind-pose scale
                 {
+                    if (keepScale)
+                        continue;
                     for (int f = 0; f < frames; f++)
                     {
                         int o = f * denseChannels + local;
@@ -604,6 +636,83 @@ namespace AssetStudio
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// The (min, range) reading puts the channels at the end of the binding curve space. Accept it when
+        /// every block starts on a binding boundary there and each rotation binding in the window decodes
+        /// to unit quaternions; a window without a rotation to check is refused.
+        /// </summary>
+        private static bool CheckTailWindow(List<Block> blocks, List<int> boundaries, AnimationClipBindingConstant bindings,
+            int frames, out int offset, out string reason)
+        {
+            int total = 0;
+            foreach (var b in blocks)
+                total += b.Channels;
+            int bindDims = boundaries[boundaries.Count - 1];
+            offset = bindDims - total;
+            reason = null;
+            if (offset < 0)
+            {
+                reason = $"{total} quantized channels but {bindDims} binding curves";
+                return false;
+            }
+            var edges = new HashSet<int>(boundaries);
+            int edge = offset;
+            foreach (var b in blocks)
+            {
+                if (!edges.Contains(edge))
+                {
+                    reason = $"block at curve {edge} starts inside a binding";
+                    return false;
+                }
+                edge += b.Channels;
+            }
+
+            int curve = 0, rotations = 0;
+            foreach (var g in bindings.genericBindings)
+            {
+                int start = curve;
+                curve += BindingCurveDim(g);
+                if (start < offset || g.typeID != ClassIDType.Transform || g.attribute != 2)
+                    continue;
+                double err = MeanUnitError(blocks, frames, start - offset);
+                if (!(err <= UnitQuatTolerance))
+                {
+                    reason = $"rotation at curve {start} is not a unit quaternion (mean |length - 1| = {err:0.###})";
+                    return false;
+                }
+                rotations++;
+            }
+            if (rotations == 0)
+            {
+                reason = "no rotation binding in the window to check";
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>Mean |length - 1| over the frames of the quaternion at window column <paramref name="local"/>; NaN when it crosses a block.</summary>
+        private static double MeanUnitError(List<Block> blocks, int frames, int local)
+        {
+            foreach (var b in blocks)
+            {
+                if (local < b.Channels)
+                {
+                    if (local + 4 > b.Channels || frames <= 0)
+                        return double.NaN;
+                    double sum = 0;
+                    for (int f = 0; f < frames; f++)
+                    {
+                        int o = f * b.Channels + local;
+                        double x = b.Values[o], y = b.Values[o + 1], z = b.Values[o + 2], w = b.Values[o + 3];
+                        sum += Math.Abs(Math.Sqrt(x * x + y * y + z * z + w * w) - 1);
+                    }
+                    return sum / frames;
+                }
+                local -= b.Channels;
+            }
+            return double.NaN;
         }
 
         private static int BindingCurveDim(GenericBinding b)
@@ -687,7 +796,7 @@ namespace AssetStudio
             public float SpanFactor;
         }
 
-        private static bool TryParseBlocks(byte[] data, int start, int frames, out List<Block> blocks, out int endOff)
+        private static bool TryParseBlocks(byte[] data, int start, int frames, bool legacy, out List<Block> blocks, out int endOff)
         {
             blocks = new List<Block>();
             endOff = start;
@@ -728,17 +837,18 @@ namespace AssetStudio
                     break;
 
                 var values = new float[sampleCount];
-                float span = max - min;
+                // The second header float is the block's range; the legacy decode reads it as the max.
+                float span = legacy ? max - min : max;
                 float spanFactor = 1f;
-                // Bone01.P (lone 3ch): full header span overshoots ~2× (b01sweep 06).
-                if (ThreeChannelHalfSpan && ni == 3)
+                // Legacy: Bone01.P (lone 3ch) with the max reading overshoots ~2× (b01sweep 06).
+                if (legacy && ThreeChannelHalfSpan && ni == 3)
                 {
                     span *= 0.5f;
                     spanFactor = 0.5f;
                 }
                 const float inv = 1f / 65535f;
                 int dataOff = p + 20;
-                bool asHalf = ThreeChannelAsHalf && ni == 3;
+                bool asHalf = legacy && ThreeChannelAsHalf && ni == 3;
                 for (int i = 0; i < sampleCount; i++)
                 {
                     ushort q = BitConverter.ToUInt16(data, dataOff + i * 2);

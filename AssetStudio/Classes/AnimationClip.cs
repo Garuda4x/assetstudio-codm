@@ -605,7 +605,7 @@ namespace AssetStudio
         public int[] m_CodmBlockChannelCounts;
         /// <summary>Per-block dequant min (parallel to channel counts).</summary>
         public float[] m_CodmBlockMins;
-        /// <summary>Per-block dequant max.</summary>
+        /// <summary>Per-block second header float: the block's range (read as its max by the legacy decode).</summary>
         public float[] m_CodmBlockMaxs;
         /// <summary>Per-block packed size field (nb) from CODM quant header.</summary>
         public uint[] m_CodmBlockPackedSizes;
@@ -619,6 +619,12 @@ namespace AssetStudio
         public int m_CodmPrefixLength;
         public int m_CodmPayloadOffset;
         public int m_CodmBlocksEnd;
+        /// <summary>
+        /// CODM quantized samples decoded as (min, range) and placed at the end of the binding curve space,
+        /// checked against the clip's rotation bindings: the samples are absolute poses, so the export-time
+        /// rewindow and idle bake leave them alone. False for the legacy decode.
+        /// </summary>
+        public bool m_CodmAbsolute;
 
         public DenseClip(ObjectReader reader)
         {
@@ -1235,7 +1241,7 @@ namespace AssetStudio
                     }
                     if (version[0] == 5 && version[1] >= 6)
                     {
-                        TryApplyCodmQuantizedDense(reader, muscleDataStart, bindingPos, m_MuscleClip, m_ClipBindingConstant);
+                        TryApplyCodmQuantizedDense(reader, muscleDataStart, bindingPos, m_MuscleClip, m_ClipBindingConstant, m_Name);
                     }
                     WarnIfConstantOnlyWithUnreadMuscle(reader.m_PathID, m_MuscleClipSize, afterMuscleStructural, bindingPos, m_MuscleClip);
                 }
@@ -1302,7 +1308,7 @@ namespace AssetStudio
 
         private static void TryApplyCodmQuantizedDense(
             ObjectReader reader, long muscleDataStart, long bindingPos,
-            ClipMuscleConstant muscle, AnimationClipBindingConstant bindings)
+            ClipMuscleConstant muscle, AnimationClipBindingConstant bindings, string clipName)
         {
             if (bindingPos <= muscleDataStart || bindingPos - muscleDataStart > reader.byteSize)
                 return;
@@ -1314,7 +1320,7 @@ namespace AssetStudio
             {
                 reader.Position = muscleDataStart;
                 var region = reader.ReadBytes(len);
-                CodmQuantizedDense.TryApply(region, muscle, bindings);
+                CodmQuantizedDense.TryApply(region, muscle, bindings, $"'{clipName}' PathID={reader.m_PathID}");
             }
             catch (Exception e)
             {

@@ -38,6 +38,7 @@ namespace AssetStudioGUI
             var path = !string.IsNullOrEmpty(chosen) && System.IO.File.Exists(chosen) ? chosen : null;
             Config = CodmConfig.Load(path);
             CodmDiagnostics.Enabled = Config.Diagnostics;
+            CodmQuantizedDense.LegacyDecode = Config.LegacyAnimDecode;
             if (string.IsNullOrEmpty(Config.VgmstreamPath))
                 Config.VgmstreamPath = WemTools.FindVgmstream() ?? "";
             return Config;

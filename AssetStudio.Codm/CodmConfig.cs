@@ -75,6 +75,14 @@ namespace AssetStudio.Codm
         [JsonProperty(Order = 12)]
         public string UnpackRoot { get; set; } = "unpack";
 
+        /// <summary>
+        /// Decode CODM quantized animation clips the pre-2026-10-28 way (block max instead of range, scored
+        /// window, idle bake at export), for comparison. Off: the (min, range) decode, legacy only for clips
+        /// that fail its check.
+        /// </summary>
+        [JsonProperty(Order = 13)]
+        public bool LegacyAnimDecode { get; set; } = false;
+
         [JsonIgnore]
         public string ConfigPath { get; private set; }
 

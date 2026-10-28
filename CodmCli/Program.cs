@@ -29,7 +29,7 @@ namespace CodmCli
         {
             Console.OutputEncoding = Encoding.UTF8;
             Logger.Default = new ConsoleLogger();
-            // global options (--config <file>, --diag) may precede the command
+            // global options (--config <file>, --diag, --legacy-anim) may precede the command
             var cmdIndex = Options.FindCommandIndex(args);
             if (cmdIndex < 0 || args[cmdIndex] == "-h" || args[cmdIndex] == "--help" || args[cmdIndex] == "help")
             {
@@ -51,6 +51,9 @@ namespace CodmCli
             if (opts.Has("diag"))
                 cfg.Diagnostics = true;
             CodmDiagnostics.Enabled = cfg.Diagnostics;
+            if (opts.Has("legacy-anim"))
+                cfg.LegacyAnimDecode = true;
+            CodmQuantizedDense.LegacyDecode = cfg.LegacyAnimDecode;
 
             try
             {
@@ -136,7 +139,7 @@ namespace CodmCli
             Console.WriteLine("  vfs-check [--source s]         read and decompress every container entry, report failures [--bundles] [--max n]; --unpacked: compare the unpack folder with the containers");
             Console.WriteLine("  unpack <text...> [--out d]     extract container entries whose decoded name contains the text as loose paks (format 18 rewritten to stock) [--list] [--raw] [--chunks] [--max n] [--source puffer|extract|streaming]");
             Console.WriteLine();
-            Console.WriteLine("Global (before or after the command): --config <file>  --diag");
+            Console.WriteLine("Global (before or after the command): --config <file>  --diag  --legacy-anim (old quantized-clip decode)");
         }
 
         // ---------------------------------------------------------------- 1.9.57 containers
